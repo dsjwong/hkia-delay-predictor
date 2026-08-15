@@ -57,3 +57,7 @@ Base: `https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=<T>&
 - We do **not** have to wait weeks to reach 5k labels — one backfill run exceeds it. We must still accumulate our own history because the window rolls: after ~3 months anything not ingested is gone. The GitHub Actions cron (every 30 min) also snapshots in-progress statuses (`Est at`, `Delayed`, `Boarding`...) which are useful later for "live" features.
 - Weather history: METAR from aviationweather only ~8 days; backfill via IEM archive in M2 for the 91-day flight window. HKO current readings/warnings are current-only, so those features start accruing from today. Typhoon-signal history can be reconstructed from HKO's public warning archive if needed (not verified).
 - Cargo flights and arrivals are deliberately excluded (v1 guardrail), though the same endpoint serves them.
+
+## Post-backfill sanity (M1, 2026-08-15)
+- Backfill 2026-05-16 → 2026-08-16: **40,030 rows, 39,066 with `actual_ts`, 499 Cancelled**, 93 distinct dates.
+- Raw delay = actual − scheduled: mean 18.2 min, 31% of departures > 15 min, range −115 min … +2013 min. Negative outliers exist (e.g. CX 181 on 2026-06-12 scheduled 00:45, "Dep 22:50 (11/06/2026)" — retimed earlier); treat < −60 min as retimed/dirty in M2 rather than as early departures.
