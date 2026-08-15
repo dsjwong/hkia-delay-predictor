@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS flights (
     aisle           TEXT,
     gate            TEXT,
     first_seen_at   TEXT NOT NULL,   -- UTC ISO
-    fetched_at      TEXT NOT NULL,   -- UTC ISO of the last upsert
+    fetched_at      TEXT NOT NULL,   -- UTC ISO of the last upsert that changed this row
     PRIMARY KEY (date, flight_no, scheduled_time)
 );
 CREATE TABLE IF NOT EXISTS hko_current (

@@ -92,7 +92,10 @@ ON CONFLICT(date, flight_no, scheduled_time) DO UPDATE SET
     estimated_ts=excluded.estimated_ts,
     status_raw=excluded.status_raw, terminal=excluded.terminal, aisle=excluded.aisle, gate=excluded.gate,
     fetched_at=excluded.fetched_at
-"""
+WHERE excluded.status_raw IS NOT flights.status_raw OR excluded.gate IS NOT flights.gate
+   OR excluded.destination IS NOT flights.destination OR excluded.codeshares IS NOT flights.codeshares
+   OR excluded.terminal IS NOT flights.terminal OR excluded.aisle IS NOT flights.aisle
+"""  # WHERE: only rewrite the row when something changed -> fewer dirty pages -> smaller git deltas
 
 
 def ingest_dates(dates: list[dt.date], conn) -> int:
