@@ -50,6 +50,31 @@ CREATE TABLE IF NOT EXISTS metar (
     wx_string   TEXT,
     fetched_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS metar_hist (
+    report_time TEXT PRIMARY KEY,    -- UTC ISO ("YYYY-MM-DDTHH:MM:00Z"), hourly routine METAR from IEM ASOS archive
+    raw_ob      TEXT,
+    temp_c      REAL,
+    dewp_c      REAL,
+    wdir        INTEGER,
+    wspd_kt     INTEGER,
+    wgst_kt     INTEGER,
+    visib_sm    REAL,                -- statute miles (IEM vsby); NULL if missing
+    ceiling_ft  INTEGER,             -- lowest BKN/OVC/VV base, NULL if none
+    flt_cat     TEXT,                -- VFR/MVFR/IFR/LIFR derived from visib+ceiling (same rules as aviationweather)
+    wx_string   TEXT,                -- present-weather codes, e.g. "-SHRA VCTS"
+    source      TEXT NOT NULL,       -- "iem"
+    fetched_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tc_signals (
+    tc_id     TEXT,                  -- HKO TC id (e.g. 202602); "0" for Strong Monsoon Signal rows
+    tc_name   TEXT,
+    signal    TEXT NOT NULL,         -- "1","3","8","9","10" (TC signal) or "MSN" (strong monsoon signal)
+    direction TEXT,                  -- quadrant for signal 8 (NE/NW/SE/SW) or monsoon direction
+    start_ts  TEXT NOT NULL,         -- ISO +08:00 (HKO times are HKT)
+    end_ts    TEXT NOT NULL,
+    source    TEXT NOT NULL,         -- "hko_warndb"
+    PRIMARY KEY (signal, start_ts)
+);
 CREATE TABLE IF NOT EXISTS ingest_log (
     run_at   TEXT NOT NULL,
     job      TEXT NOT NULL,
