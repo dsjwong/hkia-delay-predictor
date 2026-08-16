@@ -6,3 +6,5 @@ __pycache__/
 *.db-wal
 *.db-shm
 .DS_Store
+*.egg-info/
+data/features.parquet
