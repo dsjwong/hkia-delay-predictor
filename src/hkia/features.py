@@ -180,7 +180,14 @@ def rolling_delay_features(df: pd.DataFrame) -> pd.DataFrame:
 # ---------- assembly ----------
 
 def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
-                   top_dest_n: int = TOP_DEST_N) -> tuple[pd.DataFrame, dict]:
+                   top_dest_n: int = TOP_DEST_N, top_dest: set | None = None,
+                   keep_unlabelled: bool = False) -> tuple[pd.DataFrame, dict]:
+    """Shared by training (`hkia.features`) and inference (`hkia.predict`).
+
+    top_dest: explicit set of destinations kept as their own category (inference passes the training set so the
+              `dest` encoding matches the model); default = top `top_dest_n` by frequency in `flights`.
+    keep_unlabelled: keep rows without a label (not-yet-departed / blank status) — needed for inference; training drops them.
+    """
     df = flights.copy()
     df["delay_min"] = (df["actual_ts"] - df["scheduled_ts"]).dt.total_seconds() / 60
     outlier = df["delay_min"].notna() & ((df["delay_min"] < DELAY_MIN) | (df["delay_min"] > DELAY_MAX))
@@ -196,7 +203,7 @@ def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
     roll = rolling_delay_features(df)
 
     first_dest = df["destination"].fillna("").str.split(",").str[0]
-    top = set(first_dest.value_counts().head(top_dest_n).index)
+    top = set(top_dest) if top_dest is not None else set(first_dest.value_counts().head(top_dest_n).index)
     base = pd.DataFrame({
         "date": df["date"], "flight_no": df["flight_no"], "scheduled_ts": df["scheduled_ts"], "actual_ts": df["actual_ts"],
         "airline": df["airline"].fillna("UNK"),
@@ -212,6 +219,9 @@ def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
 
     keep = (feat["delay_min"].notna()) | (feat["cancelled"] == 1)
     stats["n_unlabelled_dropped"] = int((~keep & ~outlier).sum())
+    if keep_unlabelled:
+        keep = ~outlier
+        stats["n_unlabelled_dropped"] = 0
     feat = feat.loc[keep].reset_index(drop=True)
     stats.update(n_rows=len(feat), n_departed=int((feat["cancelled"] == 0).sum()), n_cancelled=int(feat["cancelled"].sum()),
                  date_min=feat["date"].min(), date_max=feat["date"].max(),
