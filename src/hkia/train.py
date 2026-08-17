@@ -97,6 +97,13 @@ def gain_importance(model, top=15) -> pd.Series:
     return pd.Series(imp).sort_values(ascending=False).head(top).round(1)
 
 
+def write_feature_importance(clf, reg, path: Path, top: int = 15) -> None:
+    """Precomputed gain importance for the dashboard (so Streamlit Cloud never needs xgboost/joblib to display it)."""
+    out = {"importance_type": "gain", "top": top,
+           "clf_delayed15": gain_importance(clf, top).to_dict(), "reg_delay_min": gain_importance(reg, top).to_dict()}
+    Path(path).write_text(json.dumps(out, indent=2))
+
+
 def perm_importance(model, X, y, scoring, top=15) -> pd.Series:
     r = permutation_importance(model, X, y, scoring=scoring, n_repeats=3, random_state=0, n_jobs=1)
     return pd.Series(r.importances_mean, index=X.columns).sort_values(ascending=False).head(top).round(4)
@@ -188,6 +195,7 @@ def main(argv=None):
                 "metrics": {f"{m}/{s}": v for (m, s), v in results.items()},
                 "ablation_test": abl.to_dict(orient="index"), "features_parquet_rows": int(len(feat))}
     (models_dir / "MANIFEST.json").write_text(json.dumps(manifest, indent=2, default=str))
+    write_feature_importance(clf, reg, models_dir / "feature_importance.json")
     write_report(reports_dir / "M2-results.md", feat, df, split_info, results, calib, gain_c, gain_r, perm_c, perm_r, abl, manifest)
     return 0
 

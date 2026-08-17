@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import brier_score_loss, log_loss, mean_absolute_error, roc_auc_score
 
 from .db import ROOT, connect
 from .features import DELAY_MAX, DELAY_MIN
@@ -57,10 +56,27 @@ def matured_predictions(conn, days: int = 7, now: dt.datetime | None = None) -> 
     return df
 
 
+# metrics in plain numpy (identical to sklearn's; keeps the dashboard's requirements free of scikit-learn)
+def roc_auc(y, p) -> float | None:
+    """Mann-Whitney AUC with average ranks for ties; None if only one class present."""
+    y = np.asarray(y, dtype=int); p = np.asarray(p, dtype=float)
+    n_pos, n_neg = int(y.sum()), int((1 - y).sum())
+    if n_pos == 0 or n_neg == 0:
+        return None
+    ranks = pd.Series(p).rank(method="average").to_numpy()
+    return float((ranks[y == 1].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
+
+
+def mean_absolute_error(y, yhat) -> float:
+    return float(np.mean(np.abs(np.asarray(y, dtype=float) - np.asarray(yhat, dtype=float))))
+
+
 def _clf(y, p) -> dict:
-    p = np.clip(p, 1e-6, 1 - 1e-6)
-    out = {"brier": round(float(brier_score_loss(y, p)), 4), "logloss": round(float(log_loss(y, p)), 4)}
-    out["auc"] = round(float(roc_auc_score(y, p)), 4) if len(np.unique(y)) == 2 else None
+    y = np.asarray(y, dtype=float); p = np.clip(np.asarray(p, dtype=float), 1e-6, 1 - 1e-6)
+    out = {"brier": round(float(np.mean((p - y) ** 2)), 4),
+           "logloss": round(float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))), 4)}
+    auc = roc_auc(y, p)
+    out["auc"] = round(auc, 4) if auc is not None else None
     return out
 
 

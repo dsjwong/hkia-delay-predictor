@@ -1,0 +1,38 @@
+{
+  "importance_type": "gain",
+  "top": 15,
+  "clf_delayed15": {
+    "wx_rain": 155.4,
+    "visib_sm": 34.0,
+    "wx_ts": 32.5,
+    "tc_signal": 20.1,
+    "airport_sameday_mean_delay": 17.2,
+    "temp_c": 15.7,
+    "airline": 15.4,
+    "dewp_c": 14.8,
+    "airline_prevday_mean_delay": 14.0,
+    "sched_hour": 13.5,
+    "sched_minute_of_day": 13.2,
+    "flt_cat": 12.0,
+    "terminal": 11.9,
+    "dest": 10.7,
+    "msn_signal": 10.6
+  },
+  "reg_delay_min": {
+    "wx_rain": 5840.0,
+    "wx_ts": 2809.0,
+    "tc_signal": 2685.2,
+    "ceiling_ft": 2073.9,
+    "visib_sm": 2033.4,
+    "airport_sameday_mean_delay": 1136.7,
+    "sched_hour": 1083.0,
+    "airline": 1064.7,
+    "temp_c": 1039.8,
+    "flt_cat": 977.4,
+    "sched_minute_of_day": 954.9,
+    "sched_dow": 908.6,
+    "dewp_c": 810.1,
+    "dest": 757.8,
+    "airline_prevday_mean_delay": 739.7
+  }
+}
