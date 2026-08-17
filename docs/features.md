@@ -67,3 +67,11 @@ Rolling delay features — **point-in-time**: only flights whose `actual_ts < sc
   provisional 2026 rows and Strong Monsoon Signal rows). Loaded whole (2,504 rows). In the flight window: signal 1 on 2–4 Jul, and
   Severe Typhoon Noul 24–26 Jul (1 → 3 → 8NW → 9 → 8SW → 3 → 1). HKO `warnsum` snapshots (`hko_warnings`) accrue from 2026-08-15 only and are not yet used.
 - Idempotent: `INSERT OR REPLACE` on `report_time` / `(signal, start_ts)`.
+
+## Inference (`python -m hkia.predict`)
+Same `build_features` call over the whole flights table with `keep_unlabelled=True` and `top_dest` = the destination categories the model
+was trained with, so congestion, calendar and point-in-time rolling features are computed identically. Differences that are inherent to
+scoring ahead of time: (1) rows scheduled after "now" get the latest METAR observation instead of the as-of observation, with
+`metar_age_min` capped at 180; (2) the rolling delay features only see flights that have already departed as of scoring time, which for a
+flight several hours out is fewer than the training-time cutoff of scheduled − 2 h. Predictions are appended to `predictions`
+(`features_hash` = md5 of the feature vector; a flight is re-scored only when it changes) and evaluated by `hkia.evaluate`.
