@@ -19,8 +19,12 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python scripts/ingest_all.py
+      - name: Ingest flights + weather
+        run: python scripts/ingest_all.py
+      - name: Score today + tomorrow (-> predictions table)
+        run: PYTHONPATH=src python -m hkia.predict
       - name: Commit DB
+        if: ${{ !cancelled() }}   # commit whatever landed even if a step above failed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -98,15 +98,17 @@ WHERE excluded.status_raw IS NOT flights.status_raw OR excluded.gate IS NOT flig
 """  # WHERE: only rewrite the row when something changed -> fewer dirty pages -> smaller git deltas
 
 
-def ingest_dates(dates: list[dt.date], conn) -> int:
-    n = 0
+def ingest_dates(dates: list[dt.date], conn) -> tuple[int, int]:
+    """Upsert the given dates. Returns (rows upserted, dates whose fetch failed)."""
+    n, failed = 0, 0
     now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     with requests.Session() as s:
         for d in dates:
             try:
                 payload = fetch_day(d, s)
-            except requests.RequestException as e:
+            except (requests.RequestException, ValueError) as e:
                 log.warning("%s: fetch failed: %s", d, e)
+                failed += 1
                 continue
             rows = rows_from_payload(payload)
             for r in rows:
@@ -117,9 +119,9 @@ def ingest_dates(dates: list[dt.date], conn) -> int:
             n += len(rows)
             if len(dates) > 3:
                 time.sleep(0.5)  # be polite during backfill
-    conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "flights", f"{len(dates)} dates, {n} rows"))
+    conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "flights", f"{len(dates)} dates, {n} rows, {failed} failed"))
     conn.commit()
-    return n
+    return n, failed
 
 
 def default_dates(backfill: bool) -> list[dt.date]:
@@ -137,11 +139,13 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     dates = [dt.date.fromisoformat(x) for x in a.dates] or default_dates(a.backfill)
     conn = connect()
-    n = ingest_dates(dates, conn)
+    n, failed = ingest_dates(dates, conn)
     total = conn.execute("SELECT COUNT(*) FROM flights").fetchone()[0]
     labelled = conn.execute("SELECT COUNT(*) FROM flights WHERE actual_ts IS NOT NULL").fetchone()[0]
     log.info("upserted %d rows; flights table: %d rows, %d with actual_ts", n, total, labelled)
-    return 0
+    if failed:
+        log.error("%d of %d flight dates failed to fetch", failed, len(dates))
+    return 1 if failed else 0  # flights are the label source: a failed fetch fails the job (weather does not)
 
 
 if __name__ == "__main__":
