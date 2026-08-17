@@ -8,7 +8,7 @@
    -> table `tc_signals`. Times are HKT.
 
 Both are idempotent (INSERT OR REPLACE on natural keys). Usage:
-  python -m hkia.backfill_weather                # min(flight date)-1 .. today
+  python -m hkia.backfill_weather                # incremental: last day in metar_hist (or min flight date-1) .. today
   python -m hkia.backfill_weather --start 2026-05-15 --end 2026-08-17
   python -m hkia.backfill_weather --tc-only | --metar-only
 """
@@ -161,8 +161,13 @@ def backfill_tc_signals(conn) -> int:
 # ---------- CLI ----------
 
 def default_window(conn) -> tuple[dt.date, dt.date]:
-    (min_date,) = conn.execute("SELECT MIN(date) FROM flights").fetchone()
-    start = dt.date.fromisoformat(min_date) - dt.timedelta(days=1) if min_date else dt.date.today() - dt.timedelta(days=92)
+    """Incremental: from the last day already in metar_hist (re-fetched, it was partial), else from the first flight date - 1."""
+    (last,) = conn.execute("SELECT MAX(report_time) FROM metar_hist").fetchone()
+    if last:
+        start = dt.date.fromisoformat(last[:10])
+    else:
+        (min_date,) = conn.execute("SELECT MIN(date) FROM flights").fetchone()
+        start = dt.date.fromisoformat(min_date) - dt.timedelta(days=1) if min_date else dt.date.today() - dt.timedelta(days=92)
     return start, dt.datetime.now(dt.timezone.utc).date()
 
 
@@ -176,20 +181,31 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     conn = connect()
     now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    ok = True
     if not a.tc_only:
         start, end = default_window(conn)
         start, end = a.start or start, a.end or end
-        n = backfill_metar(conn, start, end)
-        lo, hi, tot = conn.execute("SELECT MIN(report_time), MAX(report_time), COUNT(*) FROM metar_hist").fetchone()
-        log.info("metar_hist: fetched %d, table now %d rows %s..%s", n, tot, lo, hi)
-        conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "metar_hist", f"{start}..{end}: {n} rows"))
+        try:
+            n = backfill_metar(conn, start, end)
+            lo, hi, tot = conn.execute("SELECT MIN(report_time), MAX(report_time), COUNT(*) FROM metar_hist").fetchone()
+            log.info("metar_hist: fetched %d, table now %d rows %s..%s", n, tot, lo, hi)
+            conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "metar_hist", f"{start}..{end}: {n} rows"))
+        except (RuntimeError, requests.RequestException) as e:  # IEM is often over capacity; keep whatever landed
+            ok = False
+            log.error("metar_hist backfill failed: %s", e)
+            conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "metar_hist", f"ERROR {e}"))
     if not a.metar_only:
-        n = backfill_tc_signals(conn)
-        recent = conn.execute("SELECT signal, start_ts, end_ts FROM tc_signals WHERE start_ts >= '2026-05-01' ORDER BY start_ts").fetchall()
-        log.info("tc_signals: %d rows total; since 2026-05: %s", n, recent)
-        conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "tc_signals", f"{n} rows"))
+        try:
+            n = backfill_tc_signals(conn)
+            recent = conn.execute("SELECT signal, start_ts, end_ts FROM tc_signals WHERE start_ts >= '2026-05-01' ORDER BY start_ts").fetchall()
+            log.info("tc_signals: %d rows total; since 2026-05: %s", n, recent)
+            conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "tc_signals", f"{n} rows"))
+        except requests.RequestException as e:
+            ok = False
+            log.error("tc_signals backfill failed: %s", e)
+            conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (now, "tc_signals", f"ERROR {e}"))
     conn.commit()
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
