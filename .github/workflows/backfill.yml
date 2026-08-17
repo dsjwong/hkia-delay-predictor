@@ -32,5 +32,7 @@ jobs:
           git add data/hkia.db reports/live-eval.md
           git diff --cached --quiet && echo "no changes" && exit 0
           git commit -m "backfill: $(date -u +%Y-%m-%dT%H:%MZ)"
-          git pull --rebase
+          # if another job pushed a newer DB meanwhile, keep this job's copy (-X theirs == our replayed commit under
+          # rebase); the dropped writes are re-fetched by the next idempotent run
+          git pull --rebase -X theirs
           git push
