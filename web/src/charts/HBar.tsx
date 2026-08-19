@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AXIS, TipBox } from './theme'
-import { BLUE, MUTED } from './tokens'
+import { AXIS, CURSOR, TipBox } from './theme'
+import { GRID, INK_2, MUTED, SERIES_1 } from './tokens'
 
 export interface HBarRow {
   label: string
@@ -9,7 +9,7 @@ export interface HBarRow {
   extra?: [string, string][]
 }
 
-/** Horizontal ranked bars: one nominal series (slot-1 blue), n as a direct label at the bar end, tooltip per bar. */
+/** Horizontal ranked bars: one nominal series (slot 1), n as a direct label at the bar end, tooltip per bar. */
 export function HBar({
   rows,
   fmt,
@@ -26,8 +26,8 @@ export function HBar({
   const h = height ?? Math.max(140, 26 * rows.length + 36)
   return (
     <ResponsiveContainer width="100%" height={h}>
-      <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 4 }} barCategoryGap="28%">
-        <CartesianGrid horizontal={false} stroke="#1c2739" />
+      <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 4 }} barCategoryGap="30%">
+        <CartesianGrid horizontal={false} stroke={GRID} />
         <XAxis
           type="number"
           {...AXIS}
@@ -40,11 +40,11 @@ export function HBar({
           dataKey="label"
           width={170}
           {...AXIS}
-          tick={{ fill: '#b4bdcc', fontSize: 11 }}
+          tick={{ fill: INK_2, fontSize: 11 }}
           interval={0}
         />
         <Tooltip
-          cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+          cursor={CURSOR}
           content={({ active, payload }) => {
             const r = payload?.[0]?.payload as HBarRow | undefined
             if (!active || !r) return null
@@ -60,7 +60,7 @@ export function HBar({
             )
           }}
         />
-        <Bar dataKey="value" fill={BLUE} radius={[0, 2, 2, 0]} isAnimationActive={false}>
+        <Bar dataKey="value" fill={SERIES_1} radius={[0, 3, 3, 0]} isAnimationActive={false}>
           <LabelList
             dataKey="n"
             position="right"

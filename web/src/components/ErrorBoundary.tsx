@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Empty } from './ui/empty'
+import { Button } from './ui/button'
 
 interface State {
   error: Error | null
@@ -25,13 +27,17 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="p-6 text-sm" role="alert">
-          <div className="text-critical font-semibold">Something broke on this page.</div>
-          <div className="text-ink-2 mt-1 font-mono text-xs break-words">{this.state.error.message}</div>
-          <button className="mt-3 text-accent underline cursor-pointer" onClick={() => window.location.reload()}>
-            Reload
-          </button>
-        </div>
+        <Empty
+          tone="error"
+          className="py-16"
+          title="Something broke on this page."
+          detail={<span className="font-mono break-words">{this.state.error.message}</span>}
+          action={
+            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          }
+        />
       )
     }
     return this.props.children

@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AXIS, Legend, TipBox } from './theme'
-import { BLUE, GRID, ORANGE } from './tokens'
+import { AXIS, CURSOR, Legend, TipBox } from './theme'
+import { GRID, SERIES_1, SERIES_2 } from './tokens'
 import { num, pct } from '@/lib/time'
 
 export interface DailyRow {
@@ -20,8 +20,8 @@ export function DailyBars({ rows }: { rows: DailyRow[] }) {
     <div>
       <Legend
         items={[
-          { color: BLUE, label: 'normal day' },
-          ...(hasTc ? [{ color: ORANGE, label: 'TC signal in force' }] : []),
+          { color: SERIES_1, label: 'normal day' },
+          ...(hasTc ? [{ color: SERIES_2, label: 'TC signal in force' }] : []),
         ]}
       />
       <ResponsiveContainer width="100%" height={240}>
@@ -30,7 +30,7 @@ export function DailyBars({ rows }: { rows: DailyRow[] }) {
           <XAxis dataKey="date" {...AXIS} tickFormatter={(d: string) => d.slice(5)} minTickGap={28} />
           <YAxis {...AXIS} width={44} tickFormatter={(v) => `${v}`} />
           <Tooltip
-            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+            cursor={CURSOR}
             content={({ active, payload }) => {
               const r = payload?.[0]?.payload as DailyRow | undefined
               if (!active || !r) return null
@@ -47,8 +47,8 @@ export function DailyBars({ rows }: { rows: DailyRow[] }) {
               )
             }}
           />
-          <Bar dataKey="normal" stackId="d" fill={BLUE} isAnimationActive={false} radius={[2, 2, 0, 0]} />
-          <Bar dataKey="tc" stackId="d" fill={ORANGE} isAnimationActive={false} radius={[2, 2, 0, 0]} />
+          <Bar dataKey="normal" stackId="d" fill={SERIES_1} isAnimationActive={false} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="tc" stackId="d" fill={SERIES_2} isAnimationActive={false} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -71,7 +71,7 @@ export function HourShare({ pct15, n }: { pct15: (number | null)[]; n: number[] 
           ticks={[0, 0.5, 1]}
         />
         <Tooltip
-          cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+          cursor={CURSOR}
           content={({ active, payload }) => {
             const r = payload?.[0]?.payload as { hour: number; p: number | null; n: number } | undefined
             if (!active || !r) return null
@@ -86,7 +86,7 @@ export function HourShare({ pct15, n }: { pct15: (number | null)[]; n: number[] 
             )
           }}
         />
-        <Bar dataKey="p" fill={BLUE} isAnimationActive={false} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="p" fill={SERIES_1} isAnimationActive={false} radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

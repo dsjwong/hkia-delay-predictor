@@ -1,118 +1,214 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter/index.css';
 @import 'maplibre-gl/dist/maplibre-gl.css';
 
-/* Dark ops/radar palette — same tokens as app/theme.py (validated with the dataviz skill's validate_palette.js on #0b1220) */
+/* Design tokens — shadcn/ui "zinc" dark (see docs/design.md). Neutral grey surfaces, one warm accent (amber) reserved
+   for P(delay > 15), green only for LIVE / "good", red only for status. No blue chrome. */
 @theme {
-  --color-surface: #0b1220;
-  --color-surface-2: #121c2e;
-  --color-surface-3: #182438;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-ink: #e6ebf2;
-  --color-ink-2: #b4bdcc;
-  --color-muted: #8a94a6;
-  --color-grid: #1c2739;
-  --color-accent: #3987e5;
-  --color-orange: #d95926;
-  --color-aqua: #199e70;
-  --color-yellow: #c98500;
-  --color-good: #0ca30c;
-  --color-warning: #fab219;
-  --color-critical: #d03b3b;
-  --color-amber-1: #6b4608;
-  --color-amber-3: #bd7f0c;
-  --color-amber-5: #ffbf3d;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --color-bg: #09090b; /* zinc-950 — page */
+  --color-card: #18181b; /* zinc-900 — cards, panels */
+  --color-elev: #1f1f23; /* elevated: hover rows, inputs, popovers */
+  --color-elev-2: #27272a; /* zinc-800 — pressed / selected */
+  --color-border: #27272a; /* zinc-800 — hairline */
+  --color-border-2: #3f3f46; /* zinc-700 — focused / stronger separators */
+  --color-ink: #fafafa; /* zinc-50 — primary text */
+  --color-ink-2: #a1a1aa; /* zinc-400 — secondary text */
+  --color-muted: #71717a; /* zinc-500 — tertiary text, axis ticks */
+  --color-grid: #27272a; /* chart grid */
+  --color-accent: #f59e0b; /* amber-500 — P(delay) only */
+  --color-accent-2: #d97706; /* amber-600 — dimmer accent / chart slot 1 */
+  --color-good: #22c55e; /* green-500 — LIVE dot, "departed", hit */
+  --color-warning: #f59e0b; /* HKO warnings share the amber family */
+  --color-critical: #ef4444; /* red-500 — cancelled, feed down, stale */
+  --color-teal: #0d9488; /* chart slot 2 (observed / actual) */
+  --font-sans: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --radius-card: 12px;
 }
 
 :root {
   color-scheme: dark;
 }
-html,
-body,
-#root {
-  height: 100%;
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    margin: 0;
+    font-feature-settings:
+      'cv11' 1,
+      'ss01' 1;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #3f3f46 transparent;
+  }
+  a {
+    @apply text-ink underline decoration-border-2 underline-offset-2 hover:decoration-ink-2;
+  }
+  :focus-visible {
+    outline: 2px solid #fafafa;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.015em;
+  }
 }
-body {
-  @apply bg-surface text-ink font-sans antialiased;
-  margin: 0;
-}
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #2a3750 transparent;
-}
-a {
-  @apply text-accent;
-}
-:focus-visible {
-  outline: 2px solid #3987e5;
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+
+/* ---- shared primitives ---- */
 .hk-card {
-  @apply bg-surface-2 border border-border rounded-[10px];
+  @apply bg-card border border-border rounded-card;
 }
 .hk-kicker {
-  @apply text-[0.68rem] uppercase tracking-[0.08em] text-muted;
+  @apply text-[0.7rem] font-medium uppercase tracking-[0.06em] text-muted;
 }
 .hk-num {
   font-variant-numeric: tabular-nums;
 }
 .hk-strip {
-  @apply font-mono text-[0.76rem] text-ink-2 bg-surface-2 border border-border rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap;
+  @apply font-mono text-[0.74rem] text-ink-2 bg-elev border border-border rounded-md px-3 py-2 overflow-x-auto whitespace-nowrap;
 }
+/* floating translucent panel over the map */
+.hk-glass {
+  @apply bg-card/80 border border-border/80 rounded-card backdrop-blur-md;
+}
+.hk-input {
+  @apply bg-elev border border-border rounded-md h-8 px-2.5 text-sm text-ink placeholder:text-muted hover:border-border-2 focus:border-border-2 outline-none;
+}
+.hk-table {
+  @apply w-full text-sm;
+}
+.hk-table thead th {
+  @apply text-[0.7rem] font-medium uppercase tracking-[0.06em] text-muted text-left px-3 py-2 bg-card sticky top-0 z-[1] border-b border-border whitespace-nowrap;
+}
+.hk-table tbody td {
+  @apply px-3 py-1.5 border-b border-border/60 align-middle;
+}
+.hk-table tbody tr:last-child td {
+  @apply border-b-0;
+}
+.hk-table tbody tr.hk-row {
+  @apply cursor-pointer hover:bg-elev;
+}
+.hk-table tbody tr.hk-row[aria-pressed='true'] {
+  @apply bg-elev-2;
+}
+
 @keyframes hkpulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.55);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
   }
   70% {
-    box-shadow: 0 0 0 8px rgba(12, 163, 12, 0);
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
   }
 }
 .hk-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #0ca30c;
+  background: #22c55e;
   animation: hkpulse 2s infinite;
 }
 .hk-dot.off {
-  background: #d03b3b;
+  background: #ef4444;
   animation: none;
 }
+.hk-dot.idle {
+  background: #71717a;
+  animation: none;
+}
+@keyframes hkshimmer {
+  0% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+.hk-skeleton {
+  @apply bg-elev rounded-md;
+  animation: hkshimmer 1.6s ease-in-out infinite;
+}
+@keyframes hkslide {
+  from {
+    transform: translateX(10px);
+    opacity: 0.5;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.hk-slide {
+  animation: hkslide 0.18s ease-out;
+}
 @media (prefers-reduced-motion: reduce) {
-  .hk-dot {
+  .hk-dot,
+  .hk-skeleton,
+  .hk-slide {
     animation: none;
   }
 }
-/* maplibre chrome on dark */
+
+/* ---- maplibre chrome on zinc ---- */
 .maplibregl-ctrl-group {
-  background: #121c2e !important;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 24, 27, 0.85) !important;
+  border: 1px solid #27272a;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(8px);
 }
 .maplibregl-ctrl-group button + button {
-  border-top-color: rgba(255, 255, 255, 0.08) !important;
+  border-top-color: #27272a !important;
 }
 .maplibregl-ctrl button .maplibregl-ctrl-icon {
   filter: invert(0.85);
 }
 .maplibregl-ctrl-attrib {
-  background: rgba(11, 18, 32, 0.75) !important;
-  color: #8a94a6 !important;
+  background: rgba(24, 24, 27, 0.75) !important;
+  color: #71717a !important;
   font-size: 10px !important;
+  border-radius: 6px !important;
 }
 .maplibregl-ctrl-attrib a {
-  color: #b4bdcc !important;
+  color: #a1a1aa !important;
 }
-/* recharts */
+.maplibregl-ctrl-attrib-button {
+  filter: invert(0.85);
+}
+.maplibregl-ctrl-bottom-right {
+  z-index: 1;
+}
+/* live route: keep the zoom control clear of the floating right panel */
+@media (min-width: 64rem) {
+  .hk-map-shell .maplibregl-ctrl-bottom-right {
+    right: 384px;
+  }
+}
+
+/* ---- recharts ---- */
 .recharts-cartesian-axis-tick text {
-  fill: #8a94a6;
+  fill: #71717a;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .recharts-legend-item-text {
-  color: #b4bdcc !important;
+  color: #a1a1aa !important;
   font-size: 11px;
+}
+.recharts-surface:focus {
+  outline: none;
 }

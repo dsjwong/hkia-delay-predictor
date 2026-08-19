@@ -13,27 +13,41 @@ const STEPS = [
   'This page is a static React app on GitHub Pages: it reads the JSON straight from raw.githubusercontent.com/main (no backend, no rebuild for fresh data) and the live aircraft from adsb.lol in your browser. The Streamlit dashboard (hkia-delays.streamlit.app) reads the same db and stays up as a fallback.',
 ]
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h3 className="text-base font-semibold tracking-tight text-ink">{title}</h3>
+      <div className="text-sm text-ink-2 leading-relaxed">{children}</div>
+    </section>
+  )
+}
+
 export default function About() {
   return (
-    <div className="max-w-[860px] space-y-4 text-sm text-ink-2">
+    <div className="max-w-[820px] space-y-8">
       <div>
-        <h2 className="text-lg font-semibold text-ink">About</h2>
-        <p className="mt-1">
+        <h2 className="text-xl font-semibold tracking-tight">About</h2>
+        <p className="mt-2 text-sm text-ink-2 leading-relaxed">
           <b className="text-ink">What</b> — for every HKIA passenger departure, the probability it leaves more than 15
           min late and the expected delay in minutes, from live schedule + weather data, with an honest evaluation page.
           Departures only (v1).
         </p>
       </div>
-      <div>
-        <h3 className="font-semibold text-ink mb-1">Architecture (10 lines)</h3>
-        <ol className="list-decimal pl-5 space-y-1">
+
+      <Section title="Architecture (10 lines)">
+        <ol className="grid grid-cols-[2ch_1fr] gap-x-3 gap-y-2">
           {STEPS.map((s, i) => (
-            <li key={i}>{s}</li>
+            <li key={i} className="contents">
+              <span className="hk-num text-muted text-right" aria-hidden="true">
+                {i + 1}
+              </span>
+              <span>{s}</span>
+            </li>
           ))}
         </ol>
-      </div>
-      <div>
-        <h3 className="font-semibold text-ink mb-1">Live map</h3>
+      </Section>
+
+      <Section title="Live map">
         <p>
           Every aircraft within 100 nm of VHHH from the free <a href="https://adsb.lol">adsb.lol</a> community ADS-B
           feed, polled from your browser every 8 s and dead-reckoned in between so the icons glide. Aircraft whose
@@ -43,10 +57,10 @@ export default function About() {
           proxy (api.cors.lol) unless the site is built with its own proxy URL — see the README. ADS-B is display only,
           not a model input.
         </p>
-      </div>
-      <div>
-        <h3 className="font-semibold text-ink mb-1">Data sources</h3>
-        <ul className="list-disc pl-5 space-y-1">
+      </Section>
+
+      <Section title="Data sources">
+        <ul className="list-disc pl-5 space-y-1.5">
           <li>
             <a href="https://data.gov.hk/en-data/dataset/aahk-team1-flight-info">
               HKIA flight information — data.gov.hk / Airport Authority
@@ -69,22 +83,22 @@ export default function About() {
             basemap © <a href="https://carto.com/attributions">CARTO</a> © OpenStreetMap contributors
           </li>
         </ul>
-      </div>
-      <div>
-        <h3 className="font-semibold text-ink mb-1">Code</h3>
+      </Section>
+
+      <Section title="Code">
         <p>
           <a href={REPO}>{REPO.replace('https://', '')}</a> · README has the run book,{' '}
-          <code className="font-mono text-xs">reports/M2-results.md</code> the numbers,{' '}
-          <code className="font-mono text-xs">docs/features.md</code> the feature dictionary,{' '}
-          <code className="font-mono text-xs">web/</code> this app.
+          <code className="font-mono text-xs bg-elev px-1 rounded">reports/M2-results.md</code> the numbers,{' '}
+          <code className="font-mono text-xs bg-elev px-1 rounded">docs/features.md</code> the feature dictionary,{' '}
+          <code className="font-mono text-xs bg-elev px-1 rounded">web/</code> this app.
         </p>
-      </div>
-      <div>
-        <h3 className="font-semibold text-ink mb-1">Author</h3>
+      </Section>
+
+      <Section title="Author">
         <p>
           Darren Wong, HKUST CS + AI. Built as a genuine-interest aviation + ML project and an ML-engineering showcase.
         </p>
-      </div>
+      </Section>
     </div>
   )
 }

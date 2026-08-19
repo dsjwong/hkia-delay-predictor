@@ -33,7 +33,7 @@ export function Sheet({ open, onClose, title, children, className, inline }: She
       className={cn(inline ? 'absolute inset-0 z-20' : 'fixed inset-0 z-50', 'flex justify-end')}
       role="presentation"
     >
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
       <div
         ref={panel}
         tabIndex={-1}
@@ -41,20 +41,18 @@ export function Sheet({ open, onClose, title, children, className, inline }: She
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : 'details'}
         className={cn(
-          'relative h-full w-full max-w-[420px] overflow-y-auto bg-surface-2 border-l border-border shadow-2xl outline-none',
-          'animate-[hkslide_.18s_ease-out]',
+          'relative h-full w-full max-w-[440px] overflow-y-auto bg-card border-l border-border shadow-[0_0_0_1px_rgba(0,0,0,0.4),-16px_0_48px_rgba(0,0,0,0.45)] outline-none hk-slide',
           className,
         )}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-surface-2/95 backdrop-blur px-4 py-2.5 border-b border-border">
-          <div className="min-w-0 text-sm font-semibold text-ink">{title}</div>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-card/95 backdrop-blur px-4 h-12 border-b border-border">
+          <div className="min-w-0 text-sm font-semibold text-ink truncate">{title}</div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
             <X size={16} />
           </Button>
         </div>
-        <div className="px-4 py-3">{children}</div>
+        <div className="px-4 py-4">{children}</div>
       </div>
-      <style>{`@keyframes hkslide{from{transform:translateX(12px);opacity:.6}to{transform:none;opacity:1}}`}</style>
     </div>
   )
 }

@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { AXIS, Legend, TipBox } from './theme'
-import { BLUE, GREY, GRID } from './tokens'
+import { CARD, GRID, MUTED, NEUTRAL, SERIES_1 } from './tokens'
 
 export interface CalBin {
   bin: string
@@ -31,8 +31,8 @@ export function Reliability({ bins }: { bins: CalBin[] }) {
     <div>
       <Legend
         items={[
-          { color: BLUE, label: 'XGBoost (test) · marker size ~ bin count', shape: 'dot' },
-          { color: GREY, label: 'perfect calibration', shape: 'line' },
+          { color: SERIES_1, label: 'XGBoost (test) · marker size ~ bin count', shape: 'dot' },
+          { color: NEUTRAL, label: 'perfect calibration', shape: 'line' },
         ]}
       />
       <ResponsiveContainer width="100%" height={300}>
@@ -43,22 +43,31 @@ export function Reliability({ bins }: { bins: CalBin[] }) {
             dataKey="x"
             domain={[0, 1]}
             {...AXIS}
-            tickFormatter={(v) => v.toFixed(1)}
+            ticks={[0, 0.25, 0.5, 0.75, 1]}
+            tickFormatter={(v: number) => String(v)}
             label={{
               value: 'mean predicted P(delay > 15)',
               position: 'insideBottom',
               dy: 14,
-              fill: '#8a94a6',
+              fill: MUTED,
               fontSize: 11,
             }}
           />
-          <YAxis type="number" dataKey="y" domain={[0, 1]} {...AXIS} tickFormatter={(v) => v.toFixed(1)} width={44} />
+          <YAxis
+            type="number"
+            dataKey="y"
+            domain={[0, 1]}
+            {...AXIS}
+            ticks={[0, 0.25, 0.5, 0.75, 1]}
+            tickFormatter={(v: number) => String(v)}
+            width={44}
+          />
           <ReferenceLine
             segment={[
               { x: 0, y: 0 },
               { x: 1, y: 1 },
             ]}
-            stroke={GREY}
+            stroke={NEUTRAL}
             strokeWidth={1}
           />
           <Tooltip
@@ -78,12 +87,12 @@ export function Reliability({ bins }: { bins: CalBin[] }) {
               )
             }}
           />
-          <Line type="linear" dataKey="y" stroke={BLUE} strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Line type="linear" dataKey="y" stroke={SERIES_1} strokeWidth={2} dot={false} isAnimationActive={false} />
           <Scatter
             dataKey="y"
-            fill={BLUE}
+            fill={SERIES_1}
             shape={(p: { cx?: number; cy?: number; payload?: { r: number } }) => (
-              <circle cx={p.cx} cy={p.cy} r={p.payload?.r ?? 4} fill={BLUE} stroke="#0b1220" strokeWidth={2} />
+              <circle cx={p.cx} cy={p.cy} r={p.payload?.r ?? 4} fill={SERIES_1} stroke={CARD} strokeWidth={2} />
             )}
             isAnimationActive={false}
           />

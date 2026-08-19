@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { blueHex } from './tokens'
+import { ELEV, HEAT_RAMP, heatHex } from './tokens'
 import { num, pct } from '@/lib/time'
 
-/** 7 x 24 hour-by-weekday heatmap as a CSS grid (single-hue blue ramp, 2px surface gaps, every cell a focusable tooltip target). */
+/** 7 x 24 hour-by-weekday heatmap as a CSS grid (single-hue amber ramp, 2px surface gaps, every cell a focusable tooltip target). */
 export function Heatmap({
   dow,
   hours,
@@ -57,8 +57,8 @@ export function Heatmap({
                     onMouseLeave={() => setHover(null)}
                     onFocus={() => setHover(label)}
                     onBlur={() => setHover(null)}
-                    className="h-[22px] rounded-[2px] outline-offset-[-2px]"
-                    style={{ background: t == null ? '#0f1829' : blueHex(t) }}
+                    className="h-[22px] rounded-[3px] outline-offset-[-2px]"
+                    style={{ background: t == null ? ELEV : heatHex(t) }}
                   />
                 )
               })}
@@ -66,13 +66,13 @@ export function Heatmap({
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-between mt-1.5 text-[0.72rem] text-muted">
+      <div className="flex items-center justify-between mt-2 text-[0.72rem] text-muted">
         <span className="hk-num min-h-4">{hover ?? 'hover or focus a cell'}</span>
         <span className="inline-flex items-center gap-1.5">
           0
           <span
             className="inline-block w-[70px] h-2 rounded-full"
-            style={{ background: 'linear-gradient(90deg,#184f95,#256abf,#3987e5,#6da7ec,#9ec5f4)' }}
+            style={{ background: `linear-gradient(90deg,${HEAT_RAMP.join(',')})` }}
             aria-hidden="true"
           />
           {fmt(zmax)}+
