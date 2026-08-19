@@ -58,9 +58,11 @@ Live map data: [adsb.lol](https://adsb.lol) community ADS-B feed (free, no key; 
 ![Model](docs/img/dashboard-model.jpg)
 
 ## Web app (GitHub Pages) — https://dsjwong.github.io/hkia-delay-predictor/
-A static, Flightradar-style React app in `web/` (Vite + React 19 + TypeScript + Tailwind 4, shadcn-style components, MapLibre GL + deck.gl,
-Recharts), hosted on GitHub Pages with **no backend**: the same five pages as the Streamlit dashboard (Live map · Today · Patterns · Model · About)
-in the same dark ops/radar look, hash-routed, mobile-responsive, keyboard-accessible, tooltips on every mark.
+A static React app in `web/` (Vite + React 19 + TypeScript + Tailwind 4, shadcn-style primitives, Inter, MapLibre GL + deck.gl, Recharts),
+hosted on GitHub Pages with **no backend**: the same five pages as the Streamlit dashboard (Live map · Today · Patterns · Model · About) in a
+neutral zinc dark design system — amber reserved for P(delay > 15), floating glass panels over a full-height live map, KPI tiles + card grids
+elsewhere — hash-routed, mobile-responsive (bottom tabs), keyboard-accessible, skeleton/empty states and tooltips everywhere. Tokens, type
+scale, colour meaning and the library decision: [`docs/design.md`](docs/design.md).
 
 **Architecture: cron → JSON → static site.** Every ingest run ends with `python -m hkia.export_json`, which writes compact snapshots
 (~600 KB total) to `web/public/data/` — `meta.json` (data-as-of, last score/METAR, counts, airline names, IATA→ICAO map, airport cities),
@@ -87,6 +89,7 @@ feed fallback, JSON loaders, app shell), `npm run lint`, `npm run build` (→ `w
 one-time setup: [`docs/deploy.md`](docs/deploy.md).
 
 ![Web app — live map](docs/img/web-live.jpg)
+![Web app — flight card](docs/img/web-live-flightcard.jpg)
 ![Web app — today](docs/img/web-today.jpg)
 ![Web app — patterns](docs/img/web-patterns.jpg)
 ![Web app — model](docs/img/web-model.jpg)

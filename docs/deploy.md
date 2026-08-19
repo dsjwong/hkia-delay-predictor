@@ -54,6 +54,10 @@ The static app in `web/` is built by `.github/workflows/pages.yml` (Node 22, `np
 smoke check that `dist/index.html` has the root and `dist/data/meta.json` exists, then `actions/upload-pages-artifact` + `actions/deploy-pages`).
 URL: **https://dsjwong.github.io/hkia-delay-predictor/** (Vite `base: '/hkia-delay-predictor/'`, hash router so deep links work without a 404 rule).
 
+### Assets
+Everything the page needs is in the Pages artifact: Inter is bundled from `@fontsource-variable/inter` (no font CDN), the CARTO dark-matter
+basemap style/tiles and the data JSON are the only runtime requests besides the ADS-B feed. Design tokens: `docs/design.md`.
+
 ### One-time setup
 - Pages source must be **GitHub Actions**. Done on 2026-08-19 via `gh api -X POST repos/dsjwong/hkia-delay-predictor/pages -f build_type=workflow`.
   If it ever needs redoing by hand: repo → Settings → Pages → Build and deployment → Source: *GitHub Actions*.
