@@ -41,9 +41,11 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
   const data = useRef<TrackedAircraft[]>(aircraft)
   const sel = useRef<string | null>(selectedHex)
   const onSelectRef = useRef(onSelect)
-  data.current = aircraft
-  sel.current = selectedHex
-  onSelectRef.current = onSelect
+  useEffect(() => {
+    data.current = aircraft
+    sel.current = selectedHex
+    onSelectRef.current = onSelect
+  }, [aircraft, selectedHex, onSelect])
 
   useEffect(() => {
     if (!el.current) return
