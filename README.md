@@ -1,6 +1,6 @@
 # HKIA Flight Delay Predictor
 
-Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Current status: M4 — Streamlit dashboard built and tested locally (today's departures with live predictions, delay patterns, model performance incl. live evaluation, about); deploy config ready for Streamlit Community Cloud (`docs/deploy.md`). Live URL: _pending deploy_.**
+Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live dashboard: https://hkia-delays.streamlit.app** — today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
 
 - **What**: for each HKIA passenger departure, predict P(delay > 15 min) / expected delay minutes, served on a public dashboard with honest evaluation numbers. v1 = departures only.
 - **Data** (3 sources, all free): Airport Authority flight info API via data.gov.hk (scheduled vs actual departure = label; ~91-day rolling history), Hong Kong Observatory open data (current readings, warnings incl. typhoon signals), METAR for VHHH from aviationweather.gov. OpenSky ADS-B is a deferred stretch.
@@ -44,7 +44,9 @@ Four pages, HKT everywhere, "data as of" (last ingest) in the sidebar; reads `da
 | Model performance | M2 test metrics (baselines vs XGBoost) from `models/MANIFEST.json`, calibration plot, gain feature importance (`models/feature_importance.json`), ablation, **live evaluation** (rolling 7-day AUC/Brier/MAE once ≥ 100 matured predictions, "collecting — N so far" until then), how-to-read + limitations |
 | About | 10-line architecture, data sources, repo, author |
 
-Deploy: Streamlit Community Cloud from `main`, main file `app/streamlit_app.py` — exact steps in [`docs/deploy.md`](docs/deploy.md). Because the bot commits the DB every 30 min, each commit redeploys the app with fresh data. Screenshot: _TODO after deploy_ (`docs/img/dashboard.png`).
+Deploy: Streamlit Community Cloud from `main`, main file `app/streamlit_app.py` — exact steps in [`docs/deploy.md`](docs/deploy.md). Because the bot commits the DB every 30 min, each commit redeploys the app with fresh data. Live: https://hkia-delays.streamlit.app
+
+![HKIA delay predictor dashboard](docs/img/dashboard.jpg)
 
 ## Known limitations
 - Live scoring uses the **latest METAR observation** as the weather for every future flight (persistence, `metar_age_min` capped at 3 h) — not a forecast; TAF is a stretch. Rolling delay features for future flights only see flights that have departed as of scoring time, a slightly narrower history than at training time.
