@@ -6,10 +6,39 @@ enableXsrfProtection = true
 [browser]
 gatherUsageStats = false
 
+# Neutral dark-grey system (shadcn/ui "zinc" dark). Tokens mirrored in app/theme.py — change both together.
 [theme]
 base = "dark"
-primaryColor = "#3987e5"
-backgroundColor = "#0b1220"
-secondaryBackgroundColor = "#121c2e"
-textColor = "#e6ebf2"
-font = "sans serif"
+primaryColor = "#f59e0b"                  # the one accent: P(delay) amber
+backgroundColor = "#09090b"               # zinc-950
+secondaryBackgroundColor = "#18181b"      # zinc-900 (cards, sidebar)
+textColor = "#fafafa"                     # zinc-50
+linkColor = "#e4e4e7"
+linkUnderline = true
+borderColor = "#27272a"                   # zinc-800 hairlines
+dataframeBorderColor = "#27272a"
+dataframeHeaderBackgroundColor = "#18181b"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "12px"
+buttonRadius = "8px"
+font = "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+headingFont = "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+codeFont = "'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace"
+baseFontSize = 15
+codeFontSize = "0.85rem"
+codeTextColor = "#e4e4e7"
+codeBackgroundColor = "#1f1f23"
+metricValueFontSize = "1.6rem"
+chartCategoricalColors = ["#c9820c", "#3d87e0", "#14a88d", "#9b6fe0"]
+chartSequentialColors = ["#6b4608", "#94620a", "#bd7f0c", "#e39d14", "#ffbf3d"]
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2"
+weight = "100 900"
+style = "normal"
+
+[theme.sidebar]
+backgroundColor = "#0c0c0e"
+secondaryBackgroundColor = "#18181b"
