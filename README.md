@@ -1,10 +1,10 @@
 # HKIA Flight Delay Predictor
 
-Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live dashboard: https://hkia-delays.streamlit.app** — a live aircraft map around HKIA (adsb.lol) with today's departures highlighted by predicted delay, today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
+Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live web app: https://dsjwong.github.io/hkia-delay-predictor/** (static React, GitHub Pages) · **Streamlit dashboard: https://hkia-delays.streamlit.app** (fallback) — a live aircraft map around HKIA (adsb.lol) with today's departures highlighted by predicted delay, today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
 
 - **What**: for each HKIA passenger departure, predict P(delay > 15 min) / expected delay minutes, served on a public dashboard with honest evaluation numbers. v1 = departures only.
 - **Data** (3 sources, all free): Airport Authority flight info API via data.gov.hk (scheduled vs actual departure = label; ~91-day rolling history), Hong Kong Observatory open data (current readings, warnings incl. typhoon signals), METAR for VHHH from aviationweather.gov. OpenSky ADS-B is a deferred stretch.
-- **Architecture** (cron → ingest → predict → db → api): GitHub Actions every 30 min (`ingest.yml`, $0) runs `src/hkia/ingest_*.py` (flights incl. tomorrow's schedule, HKO readings/warnings, live METAR) into SQLite `data/hkia.db`, then `predict.py` scores every not-yet-departed flight for today + tomorrow with the models in `models/` and appends to table `predictions` (re-scored only when the feature vector changes; history kept). A daily job (`backfill.yml`) runs `backfill_weather.py` (incremental IEM METAR history + HKO typhoon-signal db) and `evaluate.py` (last score before departure vs actual → `reports/live-eval.md`). `features.py` is the single feature builder for training and inference (33 features, point-in-time rolling stats, as-of weather join); `train.py` fits baselines + XGBoost on a date-ordered split → `models/`, `reports/M2-results.md`. `api.py` (FastAPI, read-only over the DB) serves the schedule + latest predictions; `app/streamlit_app.py` (Streamlit) is the public dashboard reading the same DB.
+- **Architecture** (cron → ingest → predict → db → api / JSON → static site): GitHub Actions every 30 min (`ingest.yml`, $0) runs `src/hkia/ingest_*.py` (flights incl. tomorrow's schedule, HKO readings/warnings, live METAR) into SQLite `data/hkia.db`, then `predict.py` scores every not-yet-departed flight for today + tomorrow with the models in `models/` and appends to table `predictions` (re-scored only when the feature vector changes; history kept), then `export_json.py` writes the JSON snapshots the web app reads. A daily job (`backfill.yml`) runs `backfill_weather.py` (incremental IEM METAR history + HKO typhoon-signal db) and `evaluate.py` (last score before departure vs actual → `reports/live-eval.md`). `features.py` is the single feature builder for training and inference (33 features, point-in-time rolling stats, as-of weather join); `train.py` fits baselines + XGBoost on a date-ordered split → `models/`, `reports/M2-results.md`. `api.py` (FastAPI, read-only over the DB) serves the schedule + latest predictions; `app/streamlit_app.py` (Streamlit) is the public dashboard reading the same DB.
 - **Headline numbers (test = last 14 days, 2026-08-03..16, 6,252 departures)**: P(delay > 15 min) AUC **0.661** (XGBoost) vs 0.623 (airline x hour baseline) vs 0.50 (global rate); log loss 0.575 / 0.585 / 0.604. Delay-minutes MAE **16.6** vs 18.5 (baseline) vs 17.4 (train median). Airline + destination + time of day explain most; weather adds ~+0.013 AUC; the point-in-time rolling delay features do not help AUC on test. Full tables, calibration and ablations: `reports/M2-results.md`; feature dictionary: `docs/features.md`.
 - **Recon findings**: see `docs/M0-data-recon.md` (URLs, fields, historical depth, gotchas). Headline: ~450 departures/day, 91 days back → ~40k labelled departures on first backfill.
 
@@ -18,6 +18,7 @@ python3 -m venv .venv && .venv/bin/pip install -e .      # runtime (requirements
 .venv/bin/python -m hkia.train                           # -> models/*.joblib, models/MANIFEST.json, reports/M2-results.md
 .venv/bin/python -m hkia.predict                         # score today+tomorrow -> table predictions (what the cron does every 30 min)
 .venv/bin/python -m hkia.evaluate                        # predictions vs actuals, rolling 7 days -> reports/live-eval.md
+.venv/bin/python -m hkia.export_json                     # JSON snapshots for the static web app -> web/public/data/ (what the cron does after predict)
 .venv/bin/uvicorn hkia.api:app --reload                  # http://127.0.0.1:8000/docs
 .venv/bin/streamlit run app/streamlit_app.py            # dashboard, http://localhost:8501 (needs only requirements.txt)
 .venv/bin/python -m pytest -q                            # feature-builder tests (leakage, as-of join, congestion) + API/eval tests on a fixture db + dashboard AppTest smoke tests
@@ -55,6 +56,40 @@ Live map data: [adsb.lol](https://adsb.lol) community ADS-B feed (free, no key; 
 ![Today](docs/img/dashboard-today.jpg)
 ![Patterns](docs/img/dashboard-patterns.jpg)
 ![Model](docs/img/dashboard-model.jpg)
+
+## Web app (GitHub Pages) — https://dsjwong.github.io/hkia-delay-predictor/
+A static, Flightradar-style React app in `web/` (Vite + React 19 + TypeScript + Tailwind 4, shadcn-style components, MapLibre GL + deck.gl,
+Recharts), hosted on GitHub Pages with **no backend**: the same five pages as the Streamlit dashboard (Live map · Today · Patterns · Model · About)
+in the same dark ops/radar look, hash-routed, mobile-responsive, keyboard-accessible, tooltips on every mark.
+
+**Architecture: cron → JSON → static site.** Every ingest run ends with `python -m hkia.export_json`, which writes compact snapshots
+(~600 KB total) to `web/public/data/` — `meta.json` (data-as-of, last score/METAR, counts, airline names, IATA→ICAO map, airport cities),
+`departures_{yesterday,today,tomorrow}.json` (every flight + latest prediction + a short prediction history), `patterns.json` (hour × weekday
+heatmap, airline/destination tables, daily series with TC-signal flags, typhoon stats), `model.json` (M2 metrics, calibration bins, feature
+importance, ablation, live-eval numbers, interpretation, limitations), `weather.json` (latest METAR, HKO warnings, TC signal) — and commits
+them with the DB. The deployed page fetches those files straight from `raw.githubusercontent.com/…/main/web/public/data/` (CORS `*`, 5-min CDN
+cache), so **fresh data needs no rebuild**; the copy bundled into the Pages artifact under `/data/` is the offline fallback. `pages.yml` rebuilds
+and deploys only when `web/**` changes in a human push (bot pushes with `GITHUB_TOKEN` never trigger workflows — by design here).
+
+**Live aircraft** are fetched client-side from the free [adsb.lol](https://adsb.lol) community ADS-B feed
+(`/v2/lat/22.308/lon/113.918/dist/100`), dead-reckoned between polls (ground speed + track) so the icons glide, matched to HKIA departures by
+ICAO airline code + flight number (`CPA261` ↔ `CX 261`; map built from the db and `src/hkia/airlines.py`), coloured on the validated amber ramp
+by P(delay > 15), with 50/100 nm rings, hover tooltips and a click-to-open flight card (prediction, schedule vs actual, destination, prediction
+history sparkline, aircraft reg/type/altitude/speed). **CORS caveat:** adsb.lol (and adsb.fi / airplanes.live / anonymous OpenSky) send no
+`Access-Control-Allow-Origin` header (checked 2026-08-19 with curl and a real browser), so a page on another origin cannot read them directly.
+The app therefore tries, in order: `VITE_ADSB_URL` (your own relay — `web/worker/adsb-proxy.js` is a 20-line Cloudflare Worker, free tier;
+`cd web/worker && npx wrangler deploy`, then set the repository variable `ADSB_PROXY_URL` and re-run `pages.yml`), the direct URL, and the
+public proxy `api.cors.lol` (rate-limited to ~1 request/min, polled every 60 s — degraded but working). Without a relay the map shows the
+basemap, rings, the recent-departures list and a notice explaining how to enable the feed. ADS-B is display only, never a model input.
+
+Develop / build / test: `cd web && npm ci && npm run dev` (data from `web/public/data/`), `npm test` (vitest: callsign matching, dead-reckoning,
+feed fallback, JSON loaders, app shell), `npm run lint`, `npm run build` (→ `web/dist/`, `tsc -b` must be clean). Deploy details and the Pages
+one-time setup: [`docs/deploy.md`](docs/deploy.md).
+
+![Web app — live map](docs/img/web-live.jpg)
+![Web app — today](docs/img/web-today.jpg)
+![Web app — patterns](docs/img/web-patterns.jpg)
+![Web app — model](docs/img/web-model.jpg)
 
 ## Known limitations
 - Live scoring uses the **latest METAR observation** as the weather for every future flight (persistence, `metar_age_min` capped at 3 h) — not a forecast; TAF is a stretch. Rolling delay features for future flights only see flights that have departed as of scoring time, a slightly narrower history than at training time.
