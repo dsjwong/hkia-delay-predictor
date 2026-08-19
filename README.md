@@ -1,6 +1,6 @@
 # HKIA Flight Delay Predictor
 
-Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live dashboard: https://hkia-delays.streamlit.app** — today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
+Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live dashboard: https://hkia-delays.streamlit.app** — a live aircraft map around HKIA (adsb.lol) with today's departures highlighted by predicted delay, today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
 
 - **What**: for each HKIA passenger departure, predict P(delay > 15 min) / expected delay minutes, served on a public dashboard with honest evaluation numbers. v1 = departures only.
 - **Data** (3 sources, all free): Airport Authority flight info API via data.gov.hk (scheduled vs actual departure = label; ~91-day rolling history), Hong Kong Observatory open data (current readings, warnings incl. typhoon signals), METAR for VHHH from aviationweather.gov. OpenSky ADS-B is a deferred stretch.
@@ -22,7 +22,7 @@ python3 -m venv .venv && .venv/bin/pip install -e .      # runtime (requirements
 .venv/bin/streamlit run app/streamlit_app.py            # dashboard, http://localhost:8501 (needs only requirements.txt)
 .venv/bin/python -m pytest -q                            # feature-builder tests (leakage, as-of join, congestion) + API/eval tests on a fixture db + dashboard AppTest smoke tests
 ```
-`requirements.txt` is the light runtime set (pandas, numpy, streamlit, plotly, fastapi, uvicorn) that Streamlit Cloud installs; `requirements-ml.txt` adds what the ingestion / training / scoring jobs need (xgboost, scikit-learn, pyarrow, requests, …) and is what the Actions workflows install.
+`requirements.txt` is the light runtime set (pandas, numpy, streamlit, plotly, pydeck, requests, fastapi, uvicorn) that Streamlit Cloud installs; `requirements-ml.txt` adds what the ingestion / training / scoring jobs need (xgboost, scikit-learn, pyarrow, requests, …) and is what the Actions workflows install.
 The committed `data/hkia.db` carries the live tables, the weather backfill tables and `predictions` (all written by the Actions jobs).
 
 ### API (`uvicorn hkia.api:app`)
@@ -35,18 +35,26 @@ The committed `data/hkia.db` carries the live tables, the weather backfill table
 | `GET /weather/latest` | latest METAR + latest HKO current readings and warnings |
 
 ### Dashboard (`streamlit run app/streamlit_app.py`)
-Four pages, HKT everywhere, "data as of" (last ingest) in the sidebar; reads `data/hkia.db` + `models/` + `reports/` directly, never scores.
+Five pages in a dark ops/radar look, HKT everywhere, "data as of" (last ingest) in the header and sidebar; reads `data/hkia.db` + `models/` + `reports/` directly, never scores. Code: `app/streamlit_app.py` (shell), `app/theme.py` (palette, CSS, shared plotly template), `app/charts.py`, `app/live_map.py`, `app/page_*.py`.
 
 | page | shows |
 |---|---|
-| Today's departures | date picker (today / tomorrow / back 90 days), summary tiles (flights, predicted share > 15 min late, observed so far, current METAR, HKO warnings / TC signal), filterable table (airline, hour range, not-yet-departed) with P(delay > 15) as a progress bar, predicted minutes and — for departed flights — the actual delay and a hit/miss mark; predicted-vs-observed by hour |
-| Delay patterns | 91-day history: hour x day-of-week heatmap (mean delay or % > 15), airline table (n ≥ 50), top destinations, typhoon-days callout (mean delay on TC-signal days vs the rest), mean delay per day |
-| Model performance | M2 test metrics (baselines vs XGBoost) from `models/MANIFEST.json`, calibration plot, gain feature importance (`models/feature_importance.json`), ablation, **live evaluation** (rolling 7-day AUC/Brier/MAE once ≥ 100 matured predictions, "collecting — N so far" until then), how-to-read + limitations |
+| Live map (landing) | every aircraft within 100 nm of VHHH from the free [adsb.lol](https://api.adsb.lol/) ADS-B feed (refreshed every 10 s, plane icons rotated by track, grey→white by altitude), with **today's HKIA departures highlighted** — matched by ICAO airline code + flight number (`CPA261` ↔ `CX 261`), coloured by their latest P(delay > 15) on an amber ramp, tooltip with flight / destination / sched / actual / P / predicted minutes; side panel with counts, tracked-departure table, METAR + HKO warning strip; falls back to the last good frame if the feed is down |
+| Today | date picker (today / tomorrow / back 90 days), metric tiles (flights, predicted share > 15 min late, observed so far, METAR, HKO warnings / TC signal), timeline strip of every scored flight (scheduled time × P, departed vs pending), predicted-vs-observed late share by hour, filterable table (airline, hour range, not-yet-departed) with P(delay > 15) as a progress bar, predicted minutes and — for departed flights — actual delay and a hit/miss mark |
+| Patterns | 91-day history: hour × weekday heatmap (mean delay or % > 15), ranked bars for airlines (share > 15, n ≥ 50, top 15) and top destinations (mean delay), small multiples of delay by hour for the top 4 airlines, typhoon-days callout, mean delay per day with TC-signal days highlighted; full tables in an expander |
+| Model | M2 test metrics as tiles (AUC / Brier / log loss / MAE vs the airline × hour baseline, full table in an expander), reliability diagram, gain feature importance, ablation, **live evaluation** (rolling 7-day AUC/Brier/MAE once ≥ 100 matured predictions), how-to-read + limitations |
 | About | 10-line architecture, data sources, repo, author |
+
+Palette (validated with the dataviz skill's `validate_palette.js` on the `#0b1220` surface): categorical `#3987e5 #d95926 #199e70 #c98500` (adjacent pairs PASS; first three all-pairs PASS), P(delay) amber ramp `#6b4608 → #ffbf3d` (ordinal PASS), heatmap blue ramp `#184f95 → #9ec5f4` (PASS); status colours reserved for warnings.
 
 Deploy: Streamlit Community Cloud from `main`, main file `app/streamlit_app.py` — exact steps in [`docs/deploy.md`](docs/deploy.md). Because the bot commits the DB every 30 min, each commit redeploys the app with fresh data. Live: https://hkia-delays.streamlit.app
 
-![HKIA delay predictor dashboard](docs/img/dashboard.jpg)
+Live map data: [adsb.lol](https://adsb.lol) community ADS-B feed (free, no key; display only — not a model input). Basemap © [CARTO](https://carto.com/attributions) © OpenStreetMap contributors.
+
+![Live map](docs/img/dashboard-live.jpg)
+![Today](docs/img/dashboard-today.jpg)
+![Patterns](docs/img/dashboard-patterns.jpg)
+![Model](docs/img/dashboard-model.jpg)
 
 ## Known limitations
 - Live scoring uses the **latest METAR observation** as the weather for every future flight (persistence, `metar_age_min` capped at 3 h) — not a forecast; TAF is a stretch. Rolling delay features for future flights only see flights that have departed as of scoring time, a slightly narrower history than at training time.
