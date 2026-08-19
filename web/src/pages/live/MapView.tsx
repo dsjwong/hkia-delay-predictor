@@ -119,7 +119,7 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       last = t
       const now = Date.now()
       const plotted: Plotted[] = data.current.map((a) => {
-        const p = deadReckon({ lat: a.lat, lon: a.lon, gsKt: a.onGround ? 0 : a.gsKt, trackDeg: a.trackDeg, t: a.posAt }, (now - a.posAt) / 1000, 40)
+        const p = deadReckon({ lat: a.lat, lon: a.lon, gsKt: a.onGround ? 0 : a.gsKt, trackDeg: a.trackDeg, t: a.posAt }, (now - a.posAt) / 1000, 90)
         let color: [number, number, number, number]
         let size: number
         if (a.flight && a.flight.p != null) {
@@ -190,5 +190,10 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
     if (a) map.current.easeTo({ center: [a.lon, a.lat], duration: 600 })
   }, [selectedHex])
 
-  return <div ref={el} className={className} role="region" aria-label="Live aircraft map around HKIA" />
+  // maplibre's own CSS sets .maplibregl-map { position: relative }, so the sized box is the wrapper, not the map element
+  return (
+    <div className={className} role="region" aria-label="Live aircraft map around HKIA">
+      <div ref={el} style={{ position: "absolute", inset: 0 }} />
+    </div>
+  )
 }

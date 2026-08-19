@@ -2,15 +2,22 @@
  *
  *  CORS: api.adsb.lol (like adsb.fi / airplanes.live / anonymous OpenSky) sends no Access-Control-Allow-Origin header, so a
  *  browser on another origin cannot read it directly (verified 2026-08-19 with curl + a real Chrome tab: "Failed to fetch").
- *  Strategy, in order: VITE_ADSB_URL if set (e.g. your own Cloudflare Worker, see web/worker/), then the direct URL (in case
- *  CORS gets enabled upstream), then the public CORS proxy api.cors.lol. Whichever works is kept; polling is gentle (8 s)
- *  and positions are dead-reckoned between polls so the planes glide. */
+ *  Public CORS proxies (cors.lol, corsproxy.io, allorigins, codetabs) are either rate-limited to ~1 req/min or dead.
+ *  Strategy, in order: VITE_ADSB_URL if set (your own 20-line Cloudflare Worker, see web/worker/ — the reliable option), then
+ *  the direct URL (in case CORS gets enabled upstream), then api.cors.lol as a slow degraded fallback. Whichever works is kept;
+ *  positions are dead-reckoned between polls so the planes glide. */
 import { HKIA, haversineNm } from './geo'
 
 export const RADIUS_NM = 100
 export const DIRECT_URL = `https://api.adsb.lol/v2/lat/${HKIA.lat}/lon/${HKIA.lon}/dist/${RADIUS_NM}`
 export const PROXY_URL = `https://api.cors.lol/?url=${encodeURIComponent(DIRECT_URL)}`
+/** poll interval per route: own relay / direct every 8 s; the public proxy (api.cors.lol) rate-limits to roughly one request a
+ *  minute, so it is only a degraded fallback and is polled every 60 s (icons still glide by dead-reckoning, capped at 90 s). */
 export const POLL_MS = 8000
+export const PROXY_POLL_MS = 60000
+export function pollInterval(route: FeedRoute | null): number {
+  return route === 'proxy' ? PROXY_POLL_MS : POLL_MS
+}
 
 export interface Aircraft {
   hex: string

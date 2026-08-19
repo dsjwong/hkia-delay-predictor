@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useAdsb } from '@/hooks/useAdsb'
 import { useDepartures } from '@/lib/data'
 import { useMetaCtx } from '@/lib/meta-context'
-import { POLL_MS, RADIUS_NM } from '@/lib/adsb'
+import { POLL_MS, PROXY_POLL_MS, RADIUS_NM } from '@/lib/adsb'
 import { hms, hm } from '@/lib/time'
 import { AMBER_RAMP } from '@/lib/theme'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import { FlightCard } from '@/components/FlightCard'
 import { WeatherStrip } from '@/components/WeatherStrip'
 import { MapView } from './live/MapView'
 import { trackAircraft } from './live/match'
+import type { Flight } from '@/lib/types'
 
 export default function Live() {
   const { meta } = useMetaCtx()
@@ -35,8 +36,19 @@ export default function Live() {
   const feedBadge = feed.error
     ? feed.aircraft.length
       ? { v: 'crit' as const, t: `feed unavailable — showing last good frame (${feed.error})` }
-      : { v: 'crit' as const, t: `feed unavailable (${feed.error}) — retrying every ${POLL_MS / 1000} s` }
-    : { v: 'default' as const, t: `adsb.lol ${feed.fetchedAt ? hms(feed.fetchedAt) : '—'} HKT${feed.route === 'proxy' ? ' · via CORS proxy' : ''}` }
+      : { v: 'crit' as const, t: `feed unavailable (${feed.error}) — retrying with backoff` }
+    : feed.route === 'proxy'
+      ? { v: 'warn' as const, t: `adsb.lol ${feed.fetchedAt ? hms(feed.fetchedAt) : '—'} HKT · via public CORS proxy, every ${PROXY_POLL_MS / 1000} s` }
+      : { v: 'default' as const, t: `adsb.lol ${feed.fetchedAt ? hms(feed.fetchedAt) : '—'} HKT · every ${POLL_MS / 1000} s` }
+  const feedDown = !!feed.error && !feed.aircraft.length && feed.failures >= 2
+  const recent = useMemo(() => {
+    const now = Date.now()
+    return pool
+      .filter((f) => f.actual_ts && now - Date.parse(f.actual_ts) >= 0 && now - Date.parse(f.actual_ts) <= 2 * 3600000)
+      .sort((a, b) => (a.actual_ts! < b.actual_ts! ? 1 : -1))
+      .slice(0, 12)
+  }, [pool])
+  const [selFlight, setSelFlight] = useState<Flight | null>(null)
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,2.5fr)_minmax(300px,1.1fr)]">
@@ -47,7 +59,7 @@ export default function Live() {
           </Badge>
           <Badge variant={matched.length ? 'ok' : 'default'}>{matched.length} HKIA departures tracked</Badge>
           <Tooltip
-            content="Free community ADS-B feed, polled every 8 s (through a CORS proxy when the API does not allow browser reads); positions glide between polls by dead-reckoning on ground speed + track."
+            content="Free community ADS-B feed. api.adsb.lol sends no CORS headers, so a browser can only read it through a relay: a 20-line Cloudflare Worker (web/worker/, set ADSB_PROXY_URL) polled every 8 s, or the public api.cors.lol proxy as a slow fallback (~1 request/min). Positions glide between polls by dead-reckoning on ground speed + track."
             side="bottom"
           >
             <Badge variant={feedBadge.v} tabIndex={0}>
@@ -57,6 +69,13 @@ export default function Live() {
         </div>
         <div className="relative hk-card overflow-hidden h-[52vh] min-h-[360px] lg:h-[calc(100vh-190px)] lg:min-h-[520px]">
           <MapView aircraft={tracked} selectedHex={selected} onSelect={onSelect} className="absolute inset-0" />
+          {feedDown && (
+            <div className="absolute left-3 bottom-3 max-w-[420px] hk-card px-3 py-2 text-xs text-ink-2 z-10" role="status">
+              <b className="text-critical">Live feed unavailable from this origin.</b> api.adsb.lol (and adsb.fi / airplanes.live / OpenSky) send no CORS headers, and the public
+              proxy fallback is rate-limited. The map still works with a tiny relay: deploy <code className="font-mono">web/worker/adsb-proxy.js</code> to Cloudflare Workers
+              (free) and set the repository variable <code className="font-mono">ADSB_PROXY_URL</code> — see the README. Retrying in the background.
+            </div>
+          )}
           <Sheet open={!!sel} onClose={() => setSelected(null)} inline title={sel?.flight ? `${sel.flight.flight_no} · ${sel.callsign}` : sel?.callsign || 'aircraft'}>
             {sel?.flight ? (
               <FlightCard flight={sel.flight} meta={meta.data} aircraft={sel} />
@@ -138,6 +157,50 @@ export default function Live() {
             Click a plane or a row for the flight card.
           </p>
         </div>
+        <div>
+          <h3 className="hk-kicker mb-1.5">Recent departures (snapshot, last 2 h)</h3>
+          {recent.length ? (
+            <div className="hk-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left hk-kicker border-b border-border">
+                    <th className="px-2.5 py-1.5 font-normal">Actual</th>
+                    <th className="px-2 py-1.5 font-normal">Flight</th>
+                    <th className="px-2 py-1.5 font-normal">To</th>
+                    <th className="px-2 py-1.5 font-normal">Delay</th>
+                    <th className="px-2 py-1.5 font-normal">P(&gt;15)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.map((f) => (
+                    <tr
+                      key={f.flight_no + f.sched_ts}
+                      tabIndex={0}
+                      role="button"
+                      onClick={() => setSelFlight(f)}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelFlight(f))}
+                      className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface-3"
+                      title="open the flight card"
+                    >
+                      <td className="px-2.5 py-1 hk-num text-ink-2">{hm(f.actual_ts)}</td>
+                      <td className="px-2 py-1 font-medium">{f.flight_no}</td>
+                      <td className="px-2 py-1 text-ink-2">{f.dest}</td>
+                      <td className="px-2 py-1 hk-num text-ink-2">{f.delay_min == null ? '—' : (f.delay_min > 0 ? '+' : '') + f.delay_min}</td>
+                      <td className="px-2 py-1">
+                        <PBar p={f.p} width={40} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-muted">No departures in the last 2 h in the latest snapshot.</p>
+          )}
+        </div>
+        <Sheet open={!!selFlight} onClose={() => setSelFlight(null)} title={selFlight ? selFlight.flight_no : ''}>
+          {selFlight && <FlightCard flight={selFlight} meta={meta.data} />}
+        </Sheet>
       </aside>
     </div>
   )
