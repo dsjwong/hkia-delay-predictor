@@ -14,7 +14,7 @@ APP = ROOT / "app" / "streamlit_app.py"
 sys.path.insert(0, str(ROOT / "app"))
 pytestmark = pytest.mark.skipif(not (ROOT / "data" / "hkia.db").exists(), reason="data/hkia.db not present")
 
-PAGES = {"live": "🛰️ Live map", "today": "🛫 Today", "patterns": "📊 Patterns", "model": "🎯 Model", "about": "ℹ️ About"}
+PAGES = {"live": "Live map", "today": "Today", "patterns": "Patterns", "model": "Model", "about": "About"}
 ADSB_FIXTURE = {"ac": [
     {"hex": "780abc", "flight": "CPA261  ", "lat": 22.45, "lon": 114.2, "alt_baro": 9000, "gs": 320, "track": 45.0, "t": "A359", "r": "B-LRA", "dst": 18.0},
     {"hex": "780def", "flight": "CSN3456 ", "lat": 22.9, "lon": 113.4, "alt_baro": 31000, "gs": 450, "track": 200.0, "t": "A321", "r": "B-1234", "dst": 60.2},

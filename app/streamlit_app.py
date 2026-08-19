@@ -2,8 +2,8 @@
 
   streamlit run app/streamlit_app.py --server.headless true
 
-Pages: Live map | Today | Patterns | Model | About. Times in HKT. Dark ops look: app/theme.py; charts: app/charts.py;
-live aircraft map (adsb.lol): app/live_map.py; page bodies: app/page_*.py.
+Pages: Live map | Today | Patterns | Model | About. Times in HKT. Design system (zinc dark): app/theme.py + docs/design.md;
+charts: app/charts.py; live aircraft map (ADS-B provider chain): app/live_map.py; page bodies: app/page_*.py.
 """
 from __future__ import annotations
 
@@ -18,7 +18,14 @@ import data as D  # noqa: E402
 import theme as T  # noqa: E402
 
 REPO = "https://github.com/dsjwong/hkia-delay-predictor"
-PAGES = ["🛰️ Live map", "🛫 Today", "📊 Patterns", "🎯 Model", "ℹ️ About"]
+PAGES = ["Live map", "Today", "Patterns", "Model", "About"]
+SUBTITLES = {
+    "Live map": "Aircraft within 100 nm of VHHH · HKIA departures coloured by P(delay > 15)",
+    "Today": "Every HKIA departure with its latest P(delay > 15 min) and predicted minutes",
+    "Patterns": "Delay patterns over the rolling 91-day window",
+    "Model": "XGBoost vs the airline × hour baseline on a date-ordered test split, plus live evaluation",
+    "About": "What this is, how it is built, where the data comes from",
+}
 
 st.set_page_config(page_title="HKIA delay predictor", page_icon="✈️", layout="wide", initial_sidebar_state="expanded")
 T.register_template()
@@ -32,21 +39,26 @@ if not D.db_available():
 fresh = D.freshness()
 
 # ------------------------------------------------------------------ sidebar
-st.sidebar.markdown('<div class="hk-brand">HKIA delay predictor<small>VHHH departures · live ops view</small></div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="hk-brand"><div class="mark">HK</div><div><div class="name">HKIA delay predictor</div>'
+                    '<small>VHHH departures</small></div></div>', unsafe_allow_html=True)
 page = st.sidebar.radio("Page", PAGES, label_visibility="collapsed")
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"**Data as of** {D.fmt_hkt(fresh['last_ingest'])}  \n"
-                    f"last score {D.fmt_hkt(fresh['pred_scored'], '%H:%M')} · METAR {D.fmt_hkt(fresh['metar_report'], '%H:%M')}")
-st.sidebar.caption(f"{fresh['n_flights']:,} departures on file, {fresh['date_min']} → {fresh['date_max']}. "
-                   "Refreshed by a GitHub Actions cron every 30 min; the page re-reads the db every 10 min. Live map: adsb.lol, every 10 s.")
+st.sidebar.markdown(
+    f'<div class="hk-side-kv"><span class="k">Data as of</span><span class="v">{D.fmt_hkt(fresh["last_ingest"])}</span>'
+    f'<span class="k">Last score · METAR</span><span class="v">{D.fmt_hkt(fresh["pred_scored"], "%H:%M")} · '
+    f'{D.fmt_hkt(fresh["metar_report"], "%H:%M")}</span>'
+    f'<span class="k">On file</span>{fresh["n_flights"]:,} departures, {fresh["date_min"]} → {fresh["date_max"]}</div>',
+    unsafe_allow_html=True)
+st.sidebar.caption("Refreshed by a GitHub Actions cron every 30 min; the page re-reads the db every 10 min. "
+                   "Live map: ADS-B every 10–30 s.")
 st.sidebar.markdown(f"[Source on GitHub]({REPO})")
 
-# ------------------------------------------------------------------ header + page
+# ------------------------------------------------------------------ title row + page
 as_of = D.fmt_hkt(fresh["last_ingest"], "%H:%M")
 _t = pd.Timestamp(fresh["last_ingest"]) if fresh["last_ingest"] else None
 _t = (_t.tz_localize("UTC") if _t is not None and _t.tzinfo is None else _t)
 stale_h = (pd.Timestamp.now(tz="UTC") - _t).total_seconds() / 3600 if _t is not None else 99
-T.header("HKIA departures", page.split(" ", 1)[1].upper(), f"data as of {as_of}", live=stale_h < 2)
+T.title_row(page, SUBTITLES[page], f"data as of {as_of}", live=stale_h < 2)
 
 if page == PAGES[0]:
     import live_map
