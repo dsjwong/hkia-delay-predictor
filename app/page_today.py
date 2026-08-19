@@ -22,11 +22,9 @@ def _metar_parts(m: dict | None) -> tuple[str, str]:
 
 def render(fresh: dict) -> None:
     today = D.now_hkt().date()
-    c1, c2 = st.columns([1, 4])
+    c1, c2 = st.columns([1, 4], vertical_alignment="bottom")
     date = c1.date_input("Date (HKT)", today, min_value=today - dt.timedelta(days=90), max_value=today + dt.timedelta(days=1))
-    c2.markdown(f"### Departures — {date.strftime('%a %d %b %Y')}")
-    c2.caption("P(delay > 15) and predicted minutes are the latest cron score of each not-yet-departed flight; departed flights "
-               "keep their last score so hits and misses stay visible.")
+    c2.caption(f"{date.strftime('%A %d %B %Y')} · latest cron score per flight; departed flights keep their last score so hits and misses stay visible.")
     df = D.departures(date.isoformat())
     if df.empty:
         st.info("No flights on file for that date (schedules appear ~1 day ahead).")
@@ -56,6 +54,7 @@ def render(fresh: dict) -> None:
         t5.metric("HKO warnings", str(len(warn)) if warn else "none", ", ".join(w["name"] for w in warn)[:40] if warn else "nothing in force", delta_color="off")
     if m:
         T.strip(f"{m['raw_ob']} &nbsp;·&nbsp; {D.fmt_hkt(m['report_time'], '%H:%M')}")
+    st.markdown("#### Through the day")
 
     # -------- timeline + hourly
     if scored.any():
@@ -89,10 +88,9 @@ def render(fresh: dict) -> None:
 
     hits = v["hit"].dropna()
     if len(hits):
-        st.caption(f"Showing {len(v)} of {len(df)} flights · among the {len(hits)} departed flights with a score, "
-                   f"'P ≥ 50 % ⇔ delayed > 15 min' was right {hits.astype(bool).mean():.0%} of the time "
-                   f"(observed delayed rate {(v.loc[v['hit'].notna(), 'delay_min'] > 15).mean():.0%}). "
-                   "A 50 % cut is just for eyeballing — the model outputs probabilities, see Model performance.")
+        st.caption(f"Showing {len(v)} of {len(df)} flights · {len(hits)} departed with a score: 'P ≥ 50 % ⇔ delayed > 15 min' was right "
+                   f"{hits.astype(bool).mean():.0%} of the time (observed rate {(v.loc[v['hit'].notna(), 'delay_min'] > 15).mean():.0%}) — "
+                   "a 50 % cut is for eyeballing only.")
     else:
         st.caption(f"Showing {len(v)} of {len(df)} flights.")
 
@@ -109,5 +107,4 @@ def render(fresh: dict) -> None:
             "Pred delay (min)": st.column_config.NumberColumn(format="%.0f"),
             "Actual delay (min)": st.column_config.NumberColumn(format="%+.0f"),
         })
-    st.caption("P(delay > 15) is a probability, not a verdict: 30 % means roughly 3 in 10 such flights leave more than 15 min late. "
-               "Weather used for future flights = latest METAR (persistence), not a forecast.")
+    st.caption("P(delay > 15) is a probability, not a verdict — 30 % means ~3 in 10 such flights leave > 15 min late. Future flights use the latest METAR, not a forecast.")

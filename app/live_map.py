@@ -220,11 +220,12 @@ def match_departures(ac: pd.DataFrame, deps: pd.DataFrame) -> pd.DataFrame:
 
 # ------------------------------------------------------------------ rendering
 def _alt_grey(alt_ft: float, on_ground: bool) -> list[int]:
+    """Other traffic: zinc-500 on the ground, zinc-400 -> zinc-100 by altitude."""
     if on_ground:
-        return [95, 104, 122, 200]
+        return [113, 113, 122, 190]
     f = min(max(alt_ft, 0.0), 40000.0) / 40000.0
-    lo, hi = (120, 130, 150), (236, 240, 246)
-    return [round(lo[k] + (hi[k] - lo[k]) * f) for k in range(3)] + [230]
+    lo, hi = (161, 161, 170), (244, 244, 245)
+    return [round(lo[k] + (hi[k] - lo[k]) * f) for k in range(3)] + [235]
 
 
 def _circle(lat: float, lon: float, nm: float, n: int = 120) -> list[list[float]]:
@@ -247,7 +248,7 @@ def build_deck(ac: pd.DataFrame) -> pdk.Deck:
             color, size = [*T.amber_rgb(float(p)), 255], 30
             p_txt = f"{float(p):.0%}"
         elif tracked:
-            color, size, p_txt = [57, 135, 229, 255], 28, "not scored"
+            color, size, p_txt = [*T._hex_rgb(T.BLUE), 255], 28, "not scored"
             p = None
         else:
             color, size, p_txt = _alt_grey(float(r.alt_ft), bool(r.on_ground)), 17, ""
@@ -264,22 +265,26 @@ def build_deck(ac: pd.DataFrame) -> pdk.Deck:
         })
     others = [d for d in rows if not d["tracked"]]
     tracked = [d for d in rows if d["tracked"]]
+    ring = [*T._hex_rgb(T.BORDER_2), 160]
+    accent = T._hex_rgb(T.ACCENT)
     layers = [
         pdk.Layer("PolygonLayer", data=[{"poly": _circle(HKIA_LAT, HKIA_LON, RADIUS_NM)}, {"poly": _circle(HKIA_LAT, HKIA_LON, 50)}],
-                  get_polygon="poly", stroked=True, filled=False, get_line_color=[57, 135, 229, 70], line_width_min_pixels=1, pickable=False),
+                  get_polygon="poly", stroked=True, filled=False, get_line_color=ring, line_width_min_pixels=1, pickable=False),
         pdk.Layer("ScatterplotLayer", data=[{"lon": HKIA_LON, "lat": HKIA_LAT}], get_position="[lon, lat]", get_radius=900,
-                  get_fill_color=[57, 135, 229, 90], get_line_color=[57, 135, 229, 220], stroked=True, line_width_min_pixels=1.5, pickable=False),
-        pdk.Layer("TextLayer", data=[{"lon": HKIA_LON, "lat": HKIA_LAT - 0.035, "txt": "VHHH  HKIA  RWY 07L/25R 07R/25L"}], get_position="[lon, lat]",
-                  get_text="txt", get_color=[180, 189, 204, 255], get_size=12, get_alignment_baseline="'top'", pickable=False,
+                  get_fill_color=[*accent, 70], get_line_color=[*accent, 230], stroked=True, line_width_min_pixels=1.5, pickable=False),
+        pdk.Layer("TextLayer", data=[{"lon": HKIA_LON, "lat": HKIA_LAT - 0.035, "txt": "VHHH · HKIA"}], get_position="[lon, lat]",
+                  get_text="txt", get_color=[*T._hex_rgb(T.INK_2), 255], get_size=12, get_alignment_baseline="'top'", pickable=False,
                   font_family="Menlo, Consolas, monospace"),
         pdk.Layer("IconLayer", data=others, get_position="[lon, lat]", get_icon="icon", get_angle="angle", get_color="color",
-                  get_size="size", size_units="pixels", size_min_pixels=10, size_max_pixels=22, pickable=True, billboard=False),
+                  get_size="size", size_units="pixels", size_min_pixels=10, size_max_pixels=22, pickable=True, billboard=False,
+                  auto_highlight=True, highlight_color=[*accent, 255]),
         pdk.Layer("IconLayer", data=tracked, get_position="[lon, lat]", get_icon="icon", get_angle="angle", get_color="color",
-                  get_size="size", size_units="pixels", size_min_pixels=18, size_max_pixels=36, pickable=True, billboard=False),
+                  get_size="size", size_units="pixels", size_min_pixels=18, size_max_pixels=36, pickable=True, billboard=False,
+                  auto_highlight=True, highlight_color=[250, 250, 250, 255]),
     ]
     tooltip = {
-        "html": "<div style='font-family:Menlo,Consolas,monospace;font-size:12px'><b>{callsign}</b> {reg} {type}<br/>{alt} · {spd}<br/>{line2}</div>",
-        "style": {"backgroundColor": T.SURFACE_2, "color": T.INK, "border": f"1px solid {T.BORDER}", "borderRadius": "6px", "padding": "6px 8px"},
+        "html": "<div style='font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.5'><b>{callsign}</b> {reg} {type}<br/>{alt} · {spd}<br/>{line2}</div>",
+        "style": {"backgroundColor": T.SURFACE_3, "color": T.INK, "border": f"1px solid {T.BORDER_2}", "borderRadius": "8px", "padding": "8px 10px"},
     }
     view = pdk.ViewState(latitude=HKIA_LAT + 0.05, longitude=HKIA_LON, zoom=7.6, pitch=0, bearing=0)
     return pdk.Deck(layers=layers, initial_view_state=view, map_style=MAP_STYLE, tooltip=tooltip)
@@ -288,13 +293,11 @@ def build_deck(ac: pd.DataFrame) -> pdk.Deck:
 def _legend_html() -> str:
     ramp = ", ".join(T.AMBER_RAMP)
     return (
-        f"<div style='font-size:0.75rem;color:{T.INK_2};display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:6px'>"
-        f"<span><span style='display:inline-block;width:70px;height:8px;border-radius:4px;background:linear-gradient(90deg,{ramp});vertical-align:middle'></span>"
-        f" HKIA departure · P(delay > 15) 0 → 100 %</span>"
-        f"<span><span style='display:inline-block;width:10px;height:10px;border-radius:50%;background:{T.BLUE};vertical-align:middle'></span> tracked, not scored</span>"
-        f"<span><span style='display:inline-block;width:70px;height:8px;border-radius:4px;background:linear-gradient(90deg,#78829a,#ecf0f6);vertical-align:middle'></span>"
-        f" other traffic · altitude low → high</span>"
-        f"<span style='color:{T.MUTED}'>rings: 50 / 100 nm · data: {_LAST_GOOD['provider'] or 'ADS-B'}</span></div>")
+        '<div class="hk-legend">'
+        f'<span><span class="sw" style="background:linear-gradient(90deg,{ramp})"></span>HKIA departure · P(delay > 15) 0 → 100 %</span>'
+        f'<span><span class="dot" style="background:{T.BLUE}"></span>tracked, not scored</span>'
+        f'<span><span class="sw" style="background:linear-gradient(90deg,#a1a1aa,#f4f4f5)"></span>other traffic · altitude low → high</span>'
+        f'<span class="muted">rings 50 / 100 nm · basemap CARTO</span></div>')
 
 
 def render() -> None:
@@ -308,24 +311,20 @@ def _render() -> None:
     n_ac = 0 if ac is None else len(ac)
     matched = match_departures(ac, deps) if ac is not None else None
     n_tr = 0 if matched is None else int(matched["matched"].sum())
-    n_dep_recent = 0
-    if deps is not None and not deps.empty:
-        now = pd.Timestamp.now(tz="Asia/Hong_Kong")
-        act = pd.to_datetime(deps["actual_ts"], utc=True, errors="coerce").dt.tz_convert("Asia/Hong_Kong")
-        n_dep_recent = int(((now - act).dt.total_seconds().between(0, 45 * 60)).sum())
 
-    col_map, col_side = st.columns([2.5, 1.1], gap="medium")
+    col_map, col_side = st.columns([3, 1.15], gap="medium")
     with col_map:
-        age = f"{time.time() - fetched_at:.0f} s ago" if fetched_at else "—"
+        age = f"{max(0, time.time() - fetched_at):.0f} s ago" if fetched_at else "—"
         prov = _LAST_GOOD["provider"] or "—"
-        badges = T.badge(f"{n_ac} aircraft in {RADIUS_NM} nm") + T.badge(f"{n_tr} HKIA departures tracked", "ok" if n_tr else "")
-        badges += T.badge(f"{err} — showing last good frame" if ac is not None else "feed unavailable", "crit" if ac is None else "warn") if err else ""
-        badges += T.badge(f"{prov} · {age} · every {_LAST_GOOD['interval']} s")
-        st.markdown(badges, unsafe_allow_html=True)
+        items = [T.badge(f"<b>{n_ac}</b> aircraft in {RADIUS_NM} nm"), T.badge(f"<b>{n_tr}</b> HKIA departures tracked", "accent" if n_tr else "")]
+        if err:
+            items.append(T.badge(f"{err} — showing last good frame" if ac is not None else "feed unavailable", "warn" if ac is not None else "crit"))
+        items.append(T.badge(f"{prov} · {age} · every {_LAST_GOOD['interval']} s"))
+        T.badges(*items)
         if ac is None:
             st.warning(f"ADS-B feed unavailable ({err}); no cached frame yet. The map retries every {_LAST_GOOD['interval']} s.")
         else:
-            st.pydeck_chart(build_deck(matched), height=560, use_container_width=True)
+            st.pydeck_chart(build_deck(matched), height=600, use_container_width=True)
         st.markdown(_legend_html(), unsafe_allow_html=True)
     with col_side:
         m1, m2 = st.columns(2)
@@ -334,15 +333,16 @@ def _render() -> None:
         wx = D.weather_now()
         mt = wx["metar"]
         if mt:
-            st.markdown(f"<div class='hk-strip'>{mt['raw_ob']}</div>", unsafe_allow_html=True)
+            T.strip(mt["raw_ob"])
         tc = wx["tc_active"]
         warn = [w for w in wx["warnings"] if w["code"] != "WTCSGNL"] if tc else wx["warnings"]
+        wb = []
         if tc:
-            st.markdown(T.badge(f"TC signal {tc[0]['signal']} {tc[0].get('tc_name') or ''}", "crit"), unsafe_allow_html=True)
-        if warn:
-            st.markdown("".join(T.badge(w["name"], "warn") for w in warn), unsafe_allow_html=True)
-        elif not tc:
-            st.markdown(T.badge("HKO: no warnings in force", "ok"), unsafe_allow_html=True)
+            wb.append(T.badge(f"TC signal {tc[0]['signal']} {tc[0].get('tc_name') or ''}", "crit"))
+        wb += [T.badge(w["name"], "warn") for w in warn]
+        if not wb:
+            wb.append(T.badge("HKO: no warnings in force", "ok"))
+        T.badges(*wb)
         st.markdown("#### Tracked departures")
         if matched is not None and n_tr:
             t = matched[matched["matched"]].sort_values("sched_time")
@@ -351,7 +351,5 @@ def _render() -> None:
             st.dataframe(tbl, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(tbl)),
                          column_config={"P(delay>15)": st.column_config.ProgressColumn("P(>15)", min_value=0, max_value=1, format="%.2f")})
         else:
-            st.caption("No HKIA departure of the last few hours is currently inside the 100 nm ring with a matching callsign. "
-                       "Departures leave the ring ~15 min after take-off, so this list is usually short.")
-        st.caption("Match = ICAO airline code + flight number (CPA261 ↔ CX 261). Colour = latest P(delay > 15) of that flight; "
-                   "departed flights keep their last score.")
+            st.caption("No tracked departure inside the 100 nm ring right now — they leave it ~15 min after take-off.")
+        st.caption("Match = ICAO airline code + flight number (CPA261 ↔ CX 261); colour = that flight's latest P(delay > 15).")

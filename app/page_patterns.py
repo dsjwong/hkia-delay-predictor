@@ -12,7 +12,6 @@ def render() -> None:
     if h.empty:
         st.info("No departed flights in the window yet.")
         return
-    st.markdown("### Delay patterns — last 91 days")
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Departed flights", f"{len(h):,}", f"{h['date'].min()} → {h['date'].max()}", delta_color="off")
     k2.metric("Mean delay", f"{h['delay_min'].mean():.1f} min", f"median {h['delay_min'].median():.0f} min", delta_color="off")
@@ -20,12 +19,14 @@ def render() -> None:
     k4.metric("Airlines", f"{h['airline'].nunique()}", f"{h['dest1'].nunique()} destinations", delta_color="off")
     st.caption("Rolling window kept by the data.gov.hk API; delays clipped to [-60, 600] min like the training set; cancelled flights excluded.")
 
+    st.markdown("#### Hour × weekday")
     metric = st.radio("Heatmap metric", ["Mean delay (min)", "% delayed > 15 min"], horizontal=True, label_visibility="collapsed")
     is_mean = metric.startswith("Mean")
     grid = h.pivot_table(index="dow", columns="hour", values="delay_min" if is_mean else "delayed15", aggfunc="mean")
     grid = grid.reindex(index=range(7), columns=range(24))
     st.plotly_chart(C.heatmap(grid, is_mean), width="stretch")
 
+    st.markdown("#### Airlines and destinations")
     c1, c2 = st.columns(2)
     a = h.groupby("airline").agg(n=("delay_min", "size"), mean_delay=("delay_min", "mean"), pct15=("delayed15", "mean")).reset_index()
     a = a[a["n"] >= 50].sort_values("pct15", ascending=False).head(15)
@@ -50,9 +51,11 @@ def render() -> None:
                      column_config={"mean delay (min)": st.column_config.NumberColumn(format="%.1f"),
                                     "% > 15 min": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
 
+    st.markdown("#### By hour, top airlines")
     top4 = h.groupby("airline").size().sort_values(ascending=False).head(4).index.tolist()
     st.plotly_chart(C.small_multiples_by_hour(h, top4, D.AIRLINE_NAMES), width="stretch")
 
+    st.markdown("#### Day by day")
     td = D.typhoon_days()
     if not td.empty and (td["signal"] > 0).any():
         sig, no = td[td["signal"] > 0], td[td["signal"] == 0]
@@ -63,6 +66,6 @@ def render() -> None:
                f"vs **{no['mean_delay'].mean():.0f} min**, {no['pct15'].mean():.0%} on the other {len(no)} days.")
         if len(s8):
             msg += f" Signal 8+ days only: mean {s8['mean_delay'].mean():.0f} min ({', '.join(s8['date'])})."
-        st.warning(msg + " Handful of days — anecdotal, not a measured effect.")
+        st.info(msg + " A handful of days — anecdotal, not a measured effect.")
     daily = td if not td.empty else h.groupby("date").agg(mean_delay=("delay_min", "mean"), pct15=("delayed15", "mean")).reset_index()
     st.plotly_chart(C.daily_bars(daily), width="stretch")
