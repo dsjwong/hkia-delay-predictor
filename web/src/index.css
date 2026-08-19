@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* Dark ops/radar palette — same tokens as app/theme.py (validated with the dataviz skill's validate_palette.js on #0b1220) */
+@theme {
+  --color-surface: #0b1220;
+  --color-surface-2: #121c2e;
+  --color-surface-3: #182438;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-ink: #e6ebf2;
+  --color-ink-2: #b4bdcc;
+  --color-muted: #8a94a6;
+  --color-grid: #1c2739;
+  --color-accent: #3987e5;
+  --color-orange: #d95926;
+  --color-aqua: #199e70;
+  --color-yellow: #c98500;
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-critical: #d03b3b;
+  --color-amber-1: #6b4608;
+  --color-amber-3: #bd7f0c;
+  --color-amber-5: #ffbf3d;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  @apply bg-surface text-ink font-sans antialiased;
+  margin: 0;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3750 transparent;
+}
+a {
+  @apply text-accent;
+}
+:focus-visible {
+  outline: 2px solid #3987e5;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.hk-card {
+  @apply bg-surface-2 border border-border rounded-[10px];
+}
+.hk-kicker {
+  @apply text-[0.68rem] uppercase tracking-[0.08em] text-muted;
+}
+.hk-num {
+  font-variant-numeric: tabular-nums;
+}
+.hk-strip {
+  @apply font-mono text-[0.76rem] text-ink-2 bg-surface-2 border border-border rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap;
+}
+@keyframes hkpulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(12, 163, 12, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0);
+  }
+}
+.hk-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0ca30c;
+  animation: hkpulse 2s infinite;
+}
+.hk-dot.off {
+  background: #d03b3b;
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hk-dot {
+    animation: none;
+  }
+}
+/* maplibre chrome on dark */
+.maplibregl-ctrl-group {
+  background: #121c2e !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.maplibregl-ctrl-group button + button {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}
+.maplibregl-ctrl button .maplibregl-ctrl-icon {
+  filter: invert(0.85);
+}
+.maplibregl-ctrl-attrib {
+  background: rgba(11, 18, 32, 0.75) !important;
+  color: #8a94a6 !important;
+  font-size: 10px !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: #b4bdcc !important;
+}
+/* recharts */
+.recharts-cartesian-axis-tick text {
+  fill: #8a94a6;
+  font-size: 11px;
+}
+.recharts-legend-item-text {
+  color: #b4bdcc !important;
+  font-size: 11px;
+}

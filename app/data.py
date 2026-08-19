@@ -28,29 +28,7 @@ TTL = 600
 DELAY_MIN, DELAY_MAX = -60, 600  # same outlier clip as hkia.features
 HISTORY_DAYS = 91
 
-AIRLINE_NAMES = {
-    "CPA": "Cathay Pacific", "HKE": "HK Express", "CRK": "Hong Kong Airlines", "HGB": "Greater Bay Airlines",
-    "CES": "China Eastern", "CSN": "China Southern", "CCA": "Air China", "CSZ": "Shenzhen Airlines", "CXA": "Xiamen Air",
-    "CHH": "Hainan Airlines", "CSH": "Shanghai Airlines", "CQH": "Spring Airlines", "SIA": "Singapore Airlines",
-    "UAE": "Emirates", "QTR": "Qatar Airways", "THA": "Thai Airways", "MAS": "Malaysia Airlines", "CAL": "China Airlines",
-    "EVA": "EVA Air", "SJX": "Starlux", "KAL": "Korean Air", "AAR": "Asiana", "JAL": "Japan Airlines", "ANA": "ANA",
-    "PAL": "Philippine Airlines", "CEB": "Cebu Pacific", "GIA": "Garuda", "VJC": "VietJet", "HVN": "Vietnam Airlines",
-    "AXM": "AirAsia", "BAW": "British Airways", "QFA": "Qantas", "UAL": "United", "AAL": "American", "ACA": "Air Canada",
-    "DLH": "Lufthansa", "AFR": "Air France", "KLM": "KLM", "SWR": "SWISS", "ETD": "Etihad", "TGW": "Scoot", "JJP": "Jetstar Japan",
-    "AIC": "Air India", "ETH": "Ethiopian", "FIN": "Finnair", "TAP": "TAP", "VIR": "Virgin Atlantic", "APJ": "Peach",
-    "ESR": "Eastar Jet", "JJA": "Jeju Air", "ASV": "Air Seoul", "AAX": "AirAsia X", "TVJ": "Thai VietJet", "NOK": "Nok Air", "TLM": "Thai Lion", "JNA": "Jin Air", "TWB": "T'way", "ABL": "Air Busan", "JSA": "Jetstar Asia", "AHK": "Air Hong Kong",
-    "MDA": "Mandarin Airlines", "UIA": "Uni Air", "BKP": "Bangkok Airways", "MXD": "Malindo/Batik", "RBA": "Royal Brunei",
-    "MMA": "Myanmar Airways Intl", "DRK": "Druk Air", "RNA": "Nepal Airlines", "BBC": "Biman", "ALK": "SriLankan",
-    "IGO": "IndiGo", "TUA": "Turkmenistan Airlines", "THY": "Turkish Airlines", "SVA": "Saudia", "GFA": "Gulf Air",
-    "OMA": "Oman Air", "ELY": "El Al", "SAS": "SAS", "AZA": "ITA", "IBE": "Iberia", "AUA": "Austrian", "LOT": "LOT",
-    "ANZ": "Air New Zealand", "FJI": "Fiji Airways", "PIA": "PIA", "KZR": "Air Astana", "MGL": "MIAT", "AVN": "Air Vanuatu",
-    "SBI": "S7", "AFL": "Aeroflot", "PAC": "Polar Air Cargo", "CLX": "Cargolux", "FDX": "FedEx", "UPS": "UPS", "GEC": "Lufthansa Cargo",
-    "SQC": "Singapore Airlines Cargo", "CKK": "China Cargo", "CSC": "Sichuan Airlines", "CDG": "Shandong Airlines",
-    "OKA": "Okay Airways", "CBJ": "Capital Airlines", "GCR": "Tianjin Airlines", "LKE": "Lucky Air", "CUA": "China United",
-    "DKH": "Juneyao", "CHB": "West Air", "CQN": "Chongqing Airlines", "CYZ": "China Postal", "KNA": "Kunming Airlines",
-    "GDC": "Air Guilin", "CGZ": "Loong Air", "UEA": "Urumqi Air", "HXA": "China Express", "CDC": "Air Changan",
-    "FZA": "Fuzhou Airlines", "CSS": "SF Airlines", "TBA": "Tibet Airlines", "MMZ": "Air Macau", "AMU": "Air Macau",
-}
+from hkia.airlines import AIRLINE_NAMES  # noqa: E402  (shared with hkia.export_json)
 
 
 def airline_name(code: str | None) -> str:
