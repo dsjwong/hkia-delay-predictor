@@ -22,6 +22,8 @@ jobs:
       - name: Weather backfill (IEM METAR history + HKO TC signals; incremental, non-fatal on IEM 503)
         run: PYTHONPATH=src python -m hkia.backfill_weather
         continue-on-error: true
+      - name: Compact predictions (first / latest / one per hour per flight; idempotent) + VACUUM
+        run: PYTHONPATH=src python -m hkia.compact_predictions
       - name: Live evaluation report
         run: PYTHONPATH=src python -m hkia.evaluate
         continue-on-error: true
