@@ -2,7 +2,17 @@ import { useId, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 /** Hover/focus tooltip (no portal; keep the trigger inline). Keyboard users see it on focus. */
-export function Tooltip({ content, children, className, side = 'top' }: { content: ReactNode; children: ReactNode; className?: string; side?: 'top' | 'bottom' }) {
+export function Tooltip({
+  content,
+  children,
+  className,
+  side = 'top',
+}: {
+  content: ReactNode
+  children: ReactNode
+  className?: string
+  side?: 'top' | 'bottom'
+}) {
   const [open, setOpen] = useState(false)
   const id = useId()
   return (

@@ -4,7 +4,19 @@ import { fetchAircraft, normalise } from './adsb'
 const sample = {
   now: 1,
   ac: [
-    { hex: '781da2', flight: 'HXA4095 ', r: 'B-329F', t: 'A20N', alt_baro: 27450, gs: 471.1, track: 238.8, lat: 22.9, lon: 113.2, dst: 50.2, seen_pos: 1.5 },
+    {
+      hex: '781da2',
+      flight: 'HXA4095 ',
+      r: 'B-329F',
+      t: 'A20N',
+      alt_baro: 27450,
+      gs: 471.1,
+      track: 238.8,
+      lat: 22.9,
+      lon: 113.2,
+      dst: 50.2,
+      seen_pos: 1.5,
+    },
     { hex: '780abc', flight: 'CPA261', alt_baro: 'ground', gs: 12, track: 70, lat: 22.31, lon: 113.92 },
     { hex: 'nolatlon', flight: 'XXX1' },
   ],

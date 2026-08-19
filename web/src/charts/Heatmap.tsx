@@ -3,7 +3,19 @@ import { blueHex } from './tokens'
 import { num, pct } from '@/lib/time'
 
 /** 7 x 24 hour-by-weekday heatmap as a CSS grid (single-hue blue ramp, 2px surface gaps, every cell a focusable tooltip target). */
-export function Heatmap({ dow, hours, values, counts, isMean }: { dow: string[]; hours: number[]; values: (number | null)[][]; counts: number[][]; isMean: boolean }) {
+export function Heatmap({
+  dow,
+  hours,
+  values,
+  counts,
+  isMean,
+}: {
+  dow: string[]
+  hours: number[]
+  values: (number | null)[][]
+  counts: number[][]
+  isMean: boolean
+}) {
   const flat = values.flat().filter((v): v is number => v != null && !Number.isNaN(v))
   const sorted = [...flat].sort((a, b) => a - b)
   const zmax = sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.97))] : 1 // p97: one outlier cell must not flatten the ramp
@@ -12,7 +24,12 @@ export function Heatmap({ dow, hours, values, counts, isMean }: { dow: string[];
   return (
     <div>
       <div className="overflow-x-auto">
-        <div className="grid gap-[2px] min-w-[560px]" style={{ gridTemplateColumns: `36px repeat(${hours.length}, minmax(0,1fr))` }} role="table" aria-label="hour by weekday heatmap">
+        <div
+          className="grid gap-[2px] min-w-[560px]"
+          style={{ gridTemplateColumns: `36px repeat(${hours.length}, minmax(0,1fr))` }}
+          role="table"
+          aria-label="hour by weekday heatmap"
+        >
           <div />
           {hours.map((h) => (
             <div key={h} className="text-[10px] text-muted text-center hk-num" role="columnheader">
@@ -52,7 +69,12 @@ export function Heatmap({ dow, hours, values, counts, isMean }: { dow: string[];
       <div className="flex items-center justify-between mt-1.5 text-[0.72rem] text-muted">
         <span className="hk-num min-h-4">{hover ?? 'hover or focus a cell'}</span>
         <span className="inline-flex items-center gap-1.5">
-          0<span className="inline-block w-[70px] h-2 rounded-full" style={{ background: 'linear-gradient(90deg,#184f95,#256abf,#3987e5,#6da7ec,#9ec5f4)' }} aria-hidden="true" />
+          0
+          <span
+            className="inline-block w-[70px] h-2 rounded-full"
+            style={{ background: 'linear-gradient(90deg,#184f95,#256abf,#3987e5,#6da7ec,#9ec5f4)' }}
+            aria-hidden="true"
+          />
           {fmt(zmax)}+
         </span>
       </div>

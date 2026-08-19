@@ -63,7 +63,13 @@ export interface Patterns {
     n_dest: number
     window_days: number
   } | null
-  heatmap?: { hours: number[]; dow: string[]; mean_delay: (number | null)[][]; pct15: (number | null)[][]; n: number[][] }
+  heatmap?: {
+    hours: number[]
+    dow: string[]
+    mean_delay: (number | null)[][]
+    pct15: (number | null)[][]
+    n: number[][]
+  }
   airlines?: { code: string; name: string; n: number; mean_delay: number; pct15: number }[]
   destinations?: { code: string; city: string; country: string; n: number; mean_delay: number; pct15: number }[]
   daily?: { date: string; n: number; mean_delay: number; pct15: number; signal: number; tc_name: string | null }[]
@@ -97,7 +103,10 @@ export interface ModelJson {
     n_features: number
     features: string[]
     categorical: string[]
-    split: Record<'train' | 'val' | 'test', { date_min: string; date_max: string; n_rows: number; n_dates: number; delayed15_rate: number }>
+    split: Record<
+      'train' | 'val' | 'test',
+      { date_min: string; date_max: string; n_rows: number; n_dates: number; delayed15_rate: number }
+    >
     metrics: Record<string, MetricSet>
     ablation_test: Record<string, { n_features: number; auc: number; logloss: number; brier: number }>
     params: Record<string, unknown>
@@ -105,7 +114,12 @@ export interface ModelJson {
     reg_best_iteration: number
   } | null
   calibration: { bin: string; n: number; pred_mean: number; obs_rate: number }[]
-  feature_importance: { importance_type: string; top: number; clf_delayed15: Record<string, number>; reg_delay_min: Record<string, number> } | null
+  feature_importance: {
+    importance_type: string
+    top: number
+    clf_delayed15: Record<string, number>
+    reg_delay_min: Record<string, number>
+  } | null
   live_eval: {
     window_days: number
     n_matured: number

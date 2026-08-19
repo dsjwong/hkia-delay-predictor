@@ -18,9 +18,14 @@ export function DailyBars({ rows }: { rows: DailyRow[] }) {
   const hasTc = rows.some((r) => r.signal > 0)
   return (
     <div>
-      <Legend items={[{ color: BLUE, label: 'normal day' }, ...(hasTc ? [{ color: ORANGE, label: 'TC signal in force' }] : [])]} />
+      <Legend
+        items={[
+          { color: BLUE, label: 'normal day' },
+          ...(hasTc ? [{ color: ORANGE, label: 'TC signal in force' }] : []),
+        ]}
+      />
       <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: -16 }} barCategoryGap="25%">
+        <BarChart data={data} margin={{ top: 8, right: 8, bottom: 4, left: -8 }} barCategoryGap="12%">
           <CartesianGrid stroke={GRID} vertical={false} />
           <XAxis dataKey="date" {...AXIS} tickFormatter={(d: string) => d.slice(5)} minTickGap={28} />
           <YAxis {...AXIS} width={44} tickFormatter={(v) => `${v}`} />
@@ -55,16 +60,30 @@ export function HourShare({ pct15, n }: { pct15: (number | null)[]; n: number[] 
   const data = pct15.map((p, h) => ({ hour: h, p, n: n[h] ?? 0 }))
   return (
     <ResponsiveContainer width="100%" height={150}>
-      <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }} barCategoryGap="25%">
+      <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -6 }} barCategoryGap="20%">
         <CartesianGrid stroke={GRID} vertical={false} />
         <XAxis dataKey="hour" {...AXIS} ticks={[0, 6, 12, 18, 23]} tickFormatter={(h) => String(h).padStart(2, '0')} />
-        <YAxis domain={[0, 1]} {...AXIS} width={40} tickFormatter={(v) => `${Math.round(v * 100)}%`} ticks={[0, 0.5, 1]} />
+        <YAxis
+          domain={[0, 1]}
+          {...AXIS}
+          width={42}
+          tickFormatter={(v) => `${Math.round(v * 100)}%`}
+          ticks={[0, 0.5, 1]}
+        />
         <Tooltip
           cursor={{ fill: 'rgba(255,255,255,0.04)' }}
           content={({ active, payload }) => {
             const r = payload?.[0]?.payload as { hour: number; p: number | null; n: number } | undefined
             if (!active || !r) return null
-            return <TipBox title={`${String(r.hour).padStart(2, '0')}:00`} rows={[['> 15 min', pct(r.p)], ['n', String(r.n)]]} />
+            return (
+              <TipBox
+                title={`${String(r.hour).padStart(2, '0')}:00`}
+                rows={[
+                  ['> 15 min', pct(r.p)],
+                  ['n', String(r.n)],
+                ]}
+              />
+            )
           }}
         />
         <Bar dataKey="p" fill={BLUE} isAnimationActive={false} radius={[2, 2, 0, 0]} />

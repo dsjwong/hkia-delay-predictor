@@ -40,6 +40,7 @@ export function useAdsb(enabled = true): AdsbState {
       } finally {
         busy.current = false
       }
+      if (!alive) return // unmounted (or StrictMode re-run) while the request was in flight: do not touch the shared timer
       const base = pollInterval(route)
       schedule(failures ? Math.min(base * 2 ** Math.min(failures, 4), 120000) : base)
     }

@@ -7,7 +7,8 @@ import { hm } from '@/lib/time'
 export function WeatherStrip({ compact = false }: { compact?: boolean }) {
   const { weather } = useMetaCtx()
   const w = weather.data
-  if (!w) return <div className="text-xs text-muted">{weather.error ? `weather: ${weather.error}` : 'loading weather…'}</div>
+  if (!w)
+    return <div className="text-xs text-muted">{weather.error ? `weather: ${weather.error}` : 'loading weather…'}</div>
   const tc = w.tc_active
   const warns = tc.length ? w.hko_warnings.filter((x) => x.code !== 'WTCSGNL') : w.hko_warnings
   return (
@@ -30,7 +31,11 @@ export function WeatherStrip({ compact = false }: { compact?: boolean }) {
           </Badge>
         ))}
         {warns.map((x) => (
-          <Badge key={x.code} variant="warn" title={`HKO ${x.code} ${x.action}${x.issue_time ? ' · issued ' + hm(x.issue_time) + ' HKT' : ''}`}>
+          <Badge
+            key={x.code}
+            variant="warn"
+            title={`HKO ${x.code} ${x.action}${x.issue_time ? ' · issued ' + hm(x.issue_time) + ' HKT' : ''}`}
+          >
             {x.name}
           </Badge>
         ))}

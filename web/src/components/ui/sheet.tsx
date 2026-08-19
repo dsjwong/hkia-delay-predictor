@@ -29,7 +29,10 @@ export function Sheet({ open, onClose, title, children, className, inline }: She
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className={cn(inline ? 'absolute inset-0 z-20' : 'fixed inset-0 z-50', 'flex justify-end')} role="presentation">
+    <div
+      className={cn(inline ? 'absolute inset-0 z-20' : 'fixed inset-0 z-50', 'flex justify-end')}
+      role="presentation"
+    >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
       <div
         ref={panel}

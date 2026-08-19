@@ -16,20 +16,40 @@ export default function Patterns() {
   if (loading || !p) return <div className="text-sm text-muted">Loading…</div>
   if (!p.summary || !p.heatmap) return <div className="text-sm text-muted">No departed flights in the window yet.</div>
   const s = p.summary
-  const airlines = (p.airlines ?? []).slice(0, 15).map((a) => ({ label: `${a.name} (${a.code})`, value: a.pct15, n: a.n, extra: [['mean delay', `${num(a.mean_delay, 1)} min`]] as [string, string][] }))
-  const dests = (p.destinations ?? []).slice(0, 15).map((d) => ({ label: d.city && d.city !== d.code ? `${d.city} (${d.code})` : d.code, value: d.mean_delay, n: d.n, extra: [['> 15 min', pct(d.pct15)]] as [string, string][] }))
+  const airlines = (p.airlines ?? [])
+    .slice(0, 15)
+    .map((a) => ({
+      label: `${a.name} (${a.code})`,
+      value: a.pct15,
+      n: a.n,
+      extra: [['mean delay', `${num(a.mean_delay, 1)} min`]] as [string, string][],
+    }))
+  const dests = (p.destinations ?? [])
+    .slice(0, 15)
+    .map((d) => ({
+      label: d.city && d.city !== d.code ? `${d.city} (${d.code})` : d.code,
+      value: d.mean_delay,
+      n: d.n,
+      extra: [['> 15 min', pct(d.pct15)]] as [string, string][],
+    }))
   const ty = p.typhoon
   return (
     <div className="space-y-3">
       <div>
         <h2 className="text-lg font-semibold">Delay patterns — last {s.window_days} days</h2>
         <p className="text-xs text-muted">
-          Rolling window kept by the data.gov.hk API; delays clipped to [-60, 600] min like the training set; cancelled flights excluded. {s.date_min} → {s.date_max}.
+          Rolling window kept by the data.gov.hk API; delays clipped to [-60, 600] min like the training set; cancelled
+          flights excluded. {s.date_min} → {s.date_max}.
         </p>
       </div>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
         <Tile label="Departed flights" value={num(s.n)} sub={`${s.date_min} → ${s.date_max}`} />
-        <Tile label="Mean delay" value={`${num(s.mean_delay, 1)} min`} sub={`median ${num(s.median_delay)} min`} hint="Delays are heavy-tailed: the median is far below the mean." />
+        <Tile
+          label="Mean delay"
+          value={`${num(s.mean_delay, 1)} min`}
+          sub={`median ${num(s.median_delay)} min`}
+          hint="Delays are heavy-tailed: the median is far below the mean."
+        />
         <Tile label="Delayed > 15 min" value={pct(s.pct15)} sub="share of departures" />
         <Tile label="Airlines" value={s.n_airlines} sub={`${s.n_dest} destinations`} />
       </div>
@@ -49,7 +69,13 @@ export default function Patterns() {
             />
           }
         />
-        <Heatmap dow={p.heatmap.dow} hours={p.heatmap.hours} values={metric === 'mean' ? p.heatmap.mean_delay : p.heatmap.pct15} counts={p.heatmap.n} isMean={metric === 'mean'} />
+        <Heatmap
+          dow={p.heatmap.dow}
+          hours={p.heatmap.hours}
+          values={metric === 'mean' ? p.heatmap.mean_delay : p.heatmap.pct15}
+          counts={p.heatmap.n}
+          isMean={metric === 'mean'}
+        />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
@@ -64,7 +90,11 @@ export default function Patterns() {
       </div>
 
       <div className="hk-card p-3">
-        <button className="text-sm text-accent cursor-pointer" onClick={() => setShowTables((v) => !v)} aria-expanded={showTables}>
+        <button
+          className="text-sm text-accent cursor-pointer"
+          onClick={() => setShowTables((v) => !v)}
+          aria-expanded={showTables}
+        >
           {showTables ? 'Hide' : 'Show'} tables — every airline (n ≥ 50) and the top 25 destinations
         </button>
         {showTables && (
@@ -136,11 +166,14 @@ export default function Patterns() {
       {ty && (
         <div className="hk-card p-3 border-warning/50">
           <div className="text-sm">
-            <span className="font-semibold">Typhoon days in the window</span> — {ty.n_days} day(s) with a tropical-cyclone signal in force ({ty.names.join(', ')}:{' '}
-            {ty.days.map((d) => `${d.date} sig ${d.signal}`).join(', ')}): mean delay <b>{num(ty.mean_delay)} min</b>, {pct(ty.pct15)} &gt; 15 min, vs{' '}
-            <b>{num(ty.mean_delay_other)} min</b>, {pct(ty.pct15_other)} on the other {ty.n_other} days.
-            {ty.signal8_mean_delay != null && ` Signal 8+ days only: mean ${num(ty.signal8_mean_delay)} min (${ty.signal8_days.join(', ')}).`} Handful of days — anecdotal,
-            not a measured effect.
+            <span className="font-semibold">Typhoon days in the window</span> — {ty.n_days} day(s) with a
+            tropical-cyclone signal in force ({ty.names.join(', ')}:{' '}
+            {ty.days.map((d) => `${d.date} sig ${d.signal}`).join(', ')}): mean delay <b>{num(ty.mean_delay)} min</b>,{' '}
+            {pct(ty.pct15)} &gt; 15 min, vs <b>{num(ty.mean_delay_other)} min</b>, {pct(ty.pct15_other)} on the other{' '}
+            {ty.n_other} days.
+            {ty.signal8_mean_delay != null &&
+              ` Signal 8+ days only: mean ${num(ty.signal8_mean_delay)} min (${ty.signal8_days.join(', ')}).`}{' '}
+            Handful of days — anecdotal, not a measured effect.
           </div>
         </div>
       )}

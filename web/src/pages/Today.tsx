@@ -54,7 +54,13 @@ export default function Today() {
         if (f.delay_min > 15) acc[h].late++
       }
     }
-    return rows.map((r, h) => ({ ...r, n: acc[h].n, p: acc[h].pN ? acc[h].pSum / acc[h].pN : null, n_dep: acc[h].dep, obs: acc[h].dep ? acc[h].late / acc[h].dep : null }))
+    return rows.map((r, h) => ({
+      ...r,
+      n: acc[h].n,
+      p: acc[h].pN ? acc[h].pSum / acc[h].pN : null,
+      n_dep: acc[h].dep,
+      obs: acc[h].dep ? acc[h].late / acc[h].dep : null,
+    }))
   }, [flights])
 
   const airlines = useMemo(() => {
@@ -69,11 +75,17 @@ export default function Today() {
     if (h < hours[0] || h > hours[1]) return false
     if (onlyFuture && f.status !== 'scheduled') return false
     if (hideCancelled && f.status === 'cancelled') return false
-    if (q && !`${f.flight_no} ${f.dest} ${names(f.airline)} ${f.codeshares ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false
+    if (
+      q &&
+      !`${f.flight_no} ${f.dest} ${names(f.airline)} ${f.codeshares ?? ''}`.toLowerCase().includes(q.toLowerCase())
+    )
+      return false
     return true
   })
   const hits = view.filter((f) => f.delay_min != null && f.p != null)
-  const hitRate = hits.length ? hits.filter((f) => ((f.p as number) >= 0.5) === ((f.delay_min as number) > 15)).length / hits.length : null
+  const hitRate = hits.length
+    ? hits.filter((f) => (f.p as number) >= 0.5 === (f.delay_min as number) > 15).length / hits.length
+    : null
   const m = weather.data?.metar
 
   return (
@@ -91,8 +103,8 @@ export default function Today() {
         />
         <h2 className="text-lg font-semibold">Departures — {dateLong(deps.data?.date ?? meta.data?.dates[which])}</h2>
         <span className="text-xs text-muted">
-          P(delay &gt; 15) and predicted minutes are the latest cron score of each not-yet-departed flight; departed flights keep their last score so hits and misses stay
-          visible.
+          P(delay &gt; 15) and predicted minutes are the latest cron score of each not-yet-departed flight; departed
+          flights keep their last score so hits and misses stay visible.
         </span>
       </div>
       {deps.error && <div className="text-sm text-critical">Could not load the snapshot: {deps.error}</div>}
@@ -105,17 +117,35 @@ export default function Today() {
           sub={scored.length ? `mean P · ${nHi} flights with P ≥ 50 %` : 'nothing scored yet'}
           hint="Mean of the latest P(delay > 15) over scored flights — the share of today's departures the model expects to leave more than 15 min late."
         />
-        <Tile label="Observed so far" value={pct(obsLate)} sub={obs.length ? `> 15 min late · mean ${num(obsMean)} min` : 'no departures yet'} />
+        <Tile
+          label="Observed so far"
+          value={pct(obsLate)}
+          sub={obs.length ? `> 15 min late · mean ${num(obsMean)} min` : 'no departures yet'}
+        />
         <Tile
           label="METAR VHHH"
           value={m?.flt_cat ?? '—'}
-          sub={m ? `${m.wdir ?? 'VRB'}°/${m.wspd_kt ?? '—'} kt${m.wgst_kt ? ' G' + m.wgst_kt : ''} · vis ${m.visib ?? '—'} sm · ${m.temp_c ?? '—'}°C` : 'no METAR'}
+          sub={
+            m
+              ? `${m.wdir ?? 'VRB'}°/${m.wspd_kt ?? '—'} kt${m.wgst_kt ? ' G' + m.wgst_kt : ''} · vis ${m.visib ?? '—'} sm · ${m.temp_c ?? '—'}°C`
+              : 'no METAR'
+          }
           hint={m ? `${m.raw_ob} (${hm(m.report_time)} HKT)` : undefined}
         />
         <Tile
           label="HKO"
-          value={weather.data?.tc_active.length ? `TC ${weather.data.tc_active[0].signal}` : weather.data?.hko_warnings.length ? String(weather.data.hko_warnings.length) : 'none'}
-          sub={weather.data?.tc_active.length ? weather.data.tc_active[0].tc_name ?? 'signal in force' : weather.data?.hko_warnings.map((w) => w.name).join(', ') || 'nothing in force'}
+          value={
+            weather.data?.tc_active.length
+              ? `TC ${weather.data.tc_active[0].signal}`
+              : weather.data?.hko_warnings.length
+                ? String(weather.data.hko_warnings.length)
+                : 'none'
+          }
+          sub={
+            weather.data?.tc_active.length
+              ? (weather.data.tc_active[0].tc_name ?? 'signal in force')
+              : weather.data?.hko_warnings.map((w) => w.name).join(', ') || 'nothing in force'
+          }
           tone={weather.data?.tc_active.length ? 'crit' : weather.data?.hko_warnings.length ? 'warn' : undefined}
         />
       </div>
@@ -124,7 +154,10 @@ export default function Today() {
       {scored.length > 0 && (
         <div className="grid gap-3 lg:grid-cols-[3fr_2fr]">
           <div className="hk-card p-3">
-            <ChartHead title="Flights through the day" sub="P(delay > 15 min) by scheduled time (HKT); click a dot for the flight card" />
+            <ChartHead
+              title="Flights through the day"
+              sub="P(delay > 15 min) by scheduled time (HKT); click a dot for the flight card"
+            />
             <Timeline flights={flights} names={names} onPick={setSel} />
           </div>
           <div className="hk-card p-3">
@@ -141,7 +174,11 @@ export default function Today() {
         <div className="flex flex-wrap items-end gap-3 text-xs">
           <label className="flex flex-col gap-1">
             <span className="text-muted">Airline</span>
-            <select className="bg-surface-2 border border-border rounded-md px-2 h-8 text-sm" value={airline} onChange={(e) => setAirline(e.target.value)}>
+            <select
+              className="bg-surface-2 border border-border rounded-md px-2 h-8 text-sm"
+              value={airline}
+              onChange={(e) => setAirline(e.target.value)}
+            >
               <option value="">all airlines</option>
               {airlines.map(([c, n]) => (
                 <option key={c} value={c}>
@@ -151,21 +188,44 @@ export default function Today() {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-muted">Scheduled hour {String(hours[0]).padStart(2, '0')}–{String(hours[1]).padStart(2, '0')} (HKT)</span>
+            <span className="text-muted">
+              Scheduled hour {String(hours[0]).padStart(2, '0')}–{String(hours[1]).padStart(2, '0')} (HKT)
+            </span>
             <span className="flex items-center gap-2">
-              <input type="range" min={0} max={23} value={hours[0]} aria-label="from hour" onChange={(e) => setHours([Math.min(+e.target.value, hours[1]), hours[1]])} />
-              <input type="range" min={0} max={23} value={hours[1]} aria-label="to hour" onChange={(e) => setHours([hours[0], Math.max(+e.target.value, hours[0])])} />
+              <input
+                type="range"
+                min={0}
+                max={23}
+                value={hours[0]}
+                aria-label="from hour"
+                onChange={(e) => setHours([Math.min(+e.target.value, hours[1]), hours[1]])}
+              />
+              <input
+                type="range"
+                min={0}
+                max={23}
+                value={hours[1]}
+                aria-label="to hour"
+                onChange={(e) => setHours([hours[0], Math.max(+e.target.value, hours[0])])}
+              />
             </span>
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-muted">Search</span>
-            <input className="bg-surface-2 border border-border rounded-md px-2 h-8 text-sm w-40" placeholder="flight, airline, dest" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input
+              className="bg-surface-2 border border-border rounded-md px-2 h-8 text-sm w-40"
+              placeholder="flight, airline, dest"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </label>
           <label className="inline-flex items-center gap-1.5 h-8">
-            <input type="checkbox" checked={onlyFuture} onChange={(e) => setOnlyFuture(e.target.checked)} /> not yet departed only
+            <input type="checkbox" checked={onlyFuture} onChange={(e) => setOnlyFuture(e.target.checked)} /> not yet
+            departed only
           </label>
           <label className="inline-flex items-center gap-1.5 h-8">
-            <input type="checkbox" checked={hideCancelled} onChange={(e) => setHideCancelled(e.target.checked)} /> hide cancelled
+            <input type="checkbox" checked={hideCancelled} onChange={(e) => setHideCancelled(e.target.checked)} /> hide
+            cancelled
           </label>
         </div>
         <p className="text-xs text-muted">
@@ -173,8 +233,10 @@ export default function Today() {
           {hits.length > 0 && hitRate != null && (
             <>
               {' '}
-              · among the {hits.length} departed flights with a score, 'P ≥ 50 % ⇔ delayed &gt; 15 min' was right {pct(hitRate)} of the time (observed delayed rate{' '}
-              {pct(hits.filter((f) => (f.delay_min as number) > 15).length / hits.length)}). A 50 % cut is just for eyeballing — the model outputs probabilities, see Model.
+              · among the {hits.length} departed flights with a score, 'P ≥ 50 % ⇔ delayed &gt; 15 min' was right{' '}
+              {pct(hitRate)} of the time (observed delayed rate{' '}
+              {pct(hits.filter((f) => (f.delay_min as number) > 15).length / hits.length)}). A 50 % cut is just for
+              eyeballing — the model outputs probabilities, see Model.
             </>
           )}
         </p>
@@ -182,7 +244,20 @@ export default function Today() {
           <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="text-left hk-kicker border-b border-border">
-                {['Sched', 'Flight', 'Airline', 'To', 'Status', 'Actual', 'P(delay > 15)', 'Pred min', 'Actual delay', 'Hit?', 'Gate', 'Codeshares'].map((h) => (
+                {[
+                  'Sched',
+                  'Flight',
+                  'Airline',
+                  'To',
+                  'Status',
+                  'Actual',
+                  'P(delay > 15)',
+                  'Pred min',
+                  'Actual delay',
+                  'Hit?',
+                  'Gate',
+                  'Codeshares',
+                ].map((h) => (
                   <th key={h} className="px-2.5 py-1.5 font-normal whitespace-nowrap">
                     {h}
                   </th>
@@ -191,7 +266,7 @@ export default function Today() {
             </thead>
             <tbody>
               {view.map((f) => {
-                const hit = f.delay_min != null && f.p != null ? (f.p >= 0.5) === (f.delay_min > 15) : null
+                const hit = f.delay_min != null && f.p != null ? f.p >= 0.5 === f.delay_min > 15 : null
                 return (
                   <tr
                     key={f.flight_no + f.sched_ts}
@@ -215,9 +290,14 @@ export default function Today() {
                     </td>
                     <td className="px-2.5 py-1 hk-num">{f.pred_min == null ? '—' : Math.round(f.pred_min)}</td>
                     <td className="px-2.5 py-1 hk-num">{f.delay_min == null ? '—' : signed(f.delay_min)}</td>
-                    <td className="px-2.5 py-1">{hit == null ? '' : <Badge variant={hit ? 'ok' : 'warn'}>{hit ? '✓' : '✗'}</Badge>}</td>
+                    <td className="px-2.5 py-1">
+                      {hit == null ? '' : <Badge variant={hit ? 'ok' : 'warn'}>{hit ? '✓' : '✗'}</Badge>}
+                    </td>
                     <td className="px-2.5 py-1 text-ink-2">{f.gate ?? ''}</td>
-                    <td className="px-2.5 py-1 text-[0.7rem] text-muted max-w-[260px] truncate" title={f.codeshares ?? ''}>
+                    <td
+                      className="px-2.5 py-1 text-[0.7rem] text-muted max-w-[260px] truncate"
+                      title={f.codeshares ?? ''}
+                    >
                       {f.codeshares ?? ''}
                     </td>
                   </tr>
@@ -227,8 +307,8 @@ export default function Today() {
           </table>
         </div>
         <p className="text-xs text-muted">
-          P(delay &gt; 15) is a probability, not a verdict: 30 % means roughly 3 in 10 such flights leave more than 15 min late. Weather used for future flights = latest
-          METAR (persistence), not a forecast.
+          P(delay &gt; 15) is a probability, not a verdict: 30 % means roughly 3 in 10 such flights leave more than 15
+          min late. Weather used for future flights = latest METAR (persistence), not a forecast.
         </p>
       </section>
 

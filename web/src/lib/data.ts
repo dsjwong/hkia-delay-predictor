@@ -86,7 +86,8 @@ export const useMeta = () => useJson<Meta>('meta.json')
 export const useWeather = () => useJson<Weather>('weather.json')
 export const usePatterns = () => useJson<Patterns>('patterns.json', 0)
 export const useModel = () => useJson<ModelJson>('model.json', 0)
-export const useDepartures = (which: 'yesterday' | 'today' | 'tomorrow') => useJson<Departures>(`departures_${which}.json`)
+export const useDepartures = (which: 'yesterday' | 'today' | 'tomorrow') =>
+  useJson<Departures>(`departures_${which}.json`)
 
 export function airlineName(meta: Meta | null, code: string | null | undefined): string {
   if (!code) return '?'

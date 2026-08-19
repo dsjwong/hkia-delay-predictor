@@ -27,6 +27,9 @@ AIRLINE_NAMES = {
     "DKH": "Juneyao", "CHB": "West Air", "CQN": "Chongqing Airlines", "CYZ": "China Postal", "KNA": "Kunming Airlines",
     "GDC": "Air Guilin", "CGZ": "Loong Air", "UEA": "Urumqi Air", "HXA": "China Express", "CDC": "Air Changan",
     "FZA": "Fuzhou Airlines", "CSS": "SF Airlines", "TBA": "Tibet Airlines", "MMZ": "Air Macau", "AMU": "Air Macau",
+    "ANG": "Air Niugini", "DAL": "Delta", "BTN": "Bhutan Airlines", "CFG": "Condor", "BAV": "Bamboo Airways", "QDA": "Qingdao Airlines",
+    "HDA": "Cathay Dragon", "VTI": "Vistara", "JST": "Jetstar", "MSR": "EgyptAir", "LAO": "Lao Airlines", "TTW": "Tigerair Taiwan",
+    "CLX": "Cargolux", "EPA": "Donghai Airlines", "APG": "Air Premia",
 }
 
 

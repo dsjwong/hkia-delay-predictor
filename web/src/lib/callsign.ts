@@ -69,7 +69,8 @@ export function matchFlight(
     } else if (f.status === 'scheduled') {
       const near = ac.onGround || (ac.distNm != null && ac.distNm < 60)
       const leadH = (Date.parse(f.sched_ts) - now) / 3.6e6
-      if (near && leadH >= -4 && leadH <= 2 && (!best || Math.abs(leadH) < best.score)) best = { score: Math.abs(leadH), f }
+      if (near && leadH >= -4 && leadH <= 2 && (!best || Math.abs(leadH) < best.score))
+        best = { score: Math.abs(leadH), f }
     }
   }
   return best?.f ?? null

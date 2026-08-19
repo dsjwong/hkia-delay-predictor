@@ -89,7 +89,11 @@ export default function Model() {
   const b = man.metrics['B_airline_hour/test'] ?? {}
   const med = man.metrics['median_train/test'] ?? {}
   const fi = md.feature_importance
-  const imp = fi ? Object.entries(which === 'clf' ? fi.clf_delayed15 : fi.reg_delay_min).sort((a, c) => c[1] - a[1]).map(([k, v]) => ({ label: k, value: v })) : []
+  const imp = fi
+    ? Object.entries(which === 'clf' ? fi.clf_delayed15 : fi.reg_delay_min)
+        .sort((a, c) => c[1] - a[1])
+        .map(([k, v]) => ({ label: k, value: v }))
+    : []
   const ev = md.live_eval
   const d = (a?: number | null, c?: number | null, digits = 3) => (a == null || c == null ? '' : signed(a - c, digits))
 
@@ -98,8 +102,9 @@ export default function Model() {
       <div>
         <h2 className="text-lg font-semibold">Model performance</h2>
         <p className="text-xs text-muted">
-          XGBoost trained {man.created_at.slice(0, 10)} (git <code className="font-mono">{man.git_sha}</code>, xgboost {man.xgboost}, {man.n_features} features). Date-ordered
-          split, no shuffling: train {sp.train.date_min}→{sp.train.date_max} ({num(sp.train.n_rows)}), val {sp.val.date_min}→{sp.val.date_max} ({num(sp.val.n_rows)}),{' '}
+          XGBoost trained {man.created_at.slice(0, 10)} (git <code className="font-mono">{man.git_sha}</code>, xgboost{' '}
+          {man.xgboost}, {man.n_features} features). Date-ordered split, no shuffling: train {sp.train.date_min}→
+          {sp.train.date_max} ({num(sp.train.n_rows)}), val {sp.val.date_min}→{sp.val.date_max} ({num(sp.val.n_rows)}),{' '}
           <b className="text-ink-2">
             test {sp.test.date_min}→{sp.test.date_max} ({num(sp.test.n_rows)} departures)
           </b>
@@ -109,18 +114,43 @@ export default function Model() {
 
       <h3 className="hk-kicker">Held-out test — XGBoost vs airline × hour baseline</h3>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
-        <Tile label="AUC" value={f3(x.auc)} sub={`${d(x.auc, b.auc)} vs baseline ${f3(b.auc)}`} hint="Probability the model ranks a random delayed flight above a random on-time one. 0.5 = coin flip." />
-        <Tile label="Brier" value={f3(x.brier)} sub={`${d(x.brier, b.brier)} vs baseline ${f3(b.brier)}`} hint="Mean squared error of the probabilities; lower is better, rewards calibration." />
-        <Tile label="Log loss" value={f3(x.logloss)} sub={`${d(x.logloss, b.logloss)} vs baseline ${f3(b.logloss)}`} hint="Penalises confident wrong probabilities; lower is better." />
-        <Tile label="MAE (min)" value={x.mae == null ? '—' : x.mae.toFixed(1)} sub={`${d(x.mae, b.mae, 1)} vs baseline ${b.mae?.toFixed(1)} · median ${med.mae?.toFixed(1)}`} hint="Typical error in predicted delay minutes. Delays are heavy-tailed, so beating the median constant is hard." />
+        <Tile
+          label="AUC"
+          value={f3(x.auc)}
+          sub={`${d(x.auc, b.auc)} vs baseline ${f3(b.auc)}`}
+          hint="Probability the model ranks a random delayed flight above a random on-time one. 0.5 = coin flip."
+        />
+        <Tile
+          label="Brier"
+          value={f3(x.brier)}
+          sub={`${d(x.brier, b.brier)} vs baseline ${f3(b.brier)}`}
+          hint="Mean squared error of the probabilities; lower is better, rewards calibration."
+        />
+        <Tile
+          label="Log loss"
+          value={f3(x.logloss)}
+          sub={`${d(x.logloss, b.logloss)} vs baseline ${f3(b.logloss)}`}
+          hint="Penalises confident wrong probabilities; lower is better."
+        />
+        <Tile
+          label="MAE (min)"
+          value={x.mae == null ? '—' : x.mae.toFixed(1)}
+          sub={`${d(x.mae, b.mae, 1)} vs baseline ${b.mae?.toFixed(1)} · median ${med.mae?.toFixed(1)}`}
+          hint="Typical error in predicted delay minutes. Delays are heavy-tailed, so beating the median constant is hard."
+        />
       </div>
       <p className="text-xs text-muted">
-        AUC {f3(x.auc)}: pick a random delayed and a random on-time flight, the model ranks the delayed one higher {Math.round((x.auc ?? 0) * 100)} % of the time (0.5 = coin flip; the
-        airline × hour lookup gets {Math.round((b.auc ?? 0) * 100)} %). Brier / log loss reward calibrated probabilities; MAE is the typical error in predicted delay minutes.
-        Delays are heavy-tailed — modest, honest gains, not a crystal ball.
+        AUC {f3(x.auc)}: pick a random delayed and a random on-time flight, the model ranks the delayed one higher{' '}
+        {Math.round((x.auc ?? 0) * 100)} % of the time (0.5 = coin flip; the airline × hour lookup gets{' '}
+        {Math.round((b.auc ?? 0) * 100)} %). Brier / log loss reward calibrated probabilities; MAE is the typical error
+        in predicted delay minutes. Delays are heavy-tailed — modest, honest gains, not a crystal ball.
       </p>
       <div className="hk-card p-3">
-        <button className="text-sm text-accent cursor-pointer" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+        <button
+          className="text-sm text-accent cursor-pointer"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+        >
           {showAll ? 'Hide' : 'Show'} full metric table — all baselines
         </button>
         {showAll && (
@@ -139,8 +169,15 @@ export default function Model() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="hk-card p-3">
-          <ChartHead title="Reliability diagram" sub="10 equal-width bins on test; marker size ~ bin count" />
-          {md.calibration.length ? <Reliability bins={md.calibration} /> : <div className="text-xs text-muted">no calibration table in the snapshot</div>}
+          <ChartHead
+            title="Reliability diagram"
+            sub="observed rate (y) vs mean predicted P(delay > 15) (x); 10 equal-width bins on test, marker size ~ bin count"
+          />
+          {md.calibration.length ? (
+            <Reliability bins={md.calibration} />
+          ) : (
+            <div className="text-xs text-muted">no calibration table in the snapshot</div>
+          )}
         </div>
         <div className="hk-card p-3">
           <ChartHead
@@ -157,7 +194,11 @@ export default function Model() {
               />
             }
           />
-          {imp.length ? <HBar rows={imp} fmt={(v) => num(v, 1)} unit="gain" height={330} /> : <div className="text-xs text-muted">no feature importance in the snapshot</div>}
+          {imp.length ? (
+            <HBar rows={imp} fmt={(v) => num(v, 1)} unit="gain" height={330} />
+          ) : (
+            <div className="text-xs text-muted">no feature importance in the snapshot</div>
+          )}
         </div>
       </div>
 
@@ -186,27 +227,38 @@ export default function Model() {
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-muted mt-1">Weather is worth ~+0.013 AUC in a test window without a typhoon; the point-in-time rolling delay features do not help AUC on test.</p>
+          <p className="text-xs text-muted mt-1">
+            Weather is worth ~+0.013 AUC in a test window without a typhoon; the point-in-time rolling delay features do
+            not help AUC on test.
+          </p>
         </div>
       )}
 
       <div className="hk-card p-3 space-y-2">
-        <ChartHead title="Live evaluation — predictions vs what actually happened" sub={`rolling ${ev.window_days}-day window; per flight, the last score written before it departed`} />
+        <ChartHead
+          title="Live evaluation — predictions vs what actually happened"
+          sub={`rolling ${ev.window_days}-day window; per flight, the last score written before it departed`}
+        />
         {ev.status !== 'ok' ? (
           <p className="text-sm text-ink-2">
-            Collecting — <b>{ev.n_matured}</b> matured predictions so far (need ≥ {ev.min_n}). A prediction 'matures' when its flight departs; the metric is the last score
-            written before departure. The cron started scoring on 2026-08-17, so a week of numbers appears after a few days.
+            Collecting — <b>{ev.n_matured}</b> matured predictions so far (need ≥ {ev.min_n}). A prediction 'matures'
+            when its flight departs; the metric is the last score written before departure. The cron started scoring on
+            2026-08-17, so a week of numbers appears after a few days.
           </p>
         ) : (
           <>
             <p className="text-xs text-muted">
-              Flights departed {ev.date_min} → {ev.date_max}, n = {num(ev.n_matured)}, observed P(delay &gt; 15) = {ev.delayed15_rate?.toFixed(2)}, median lead time between last score
-              and departure {Math.round(ev.median_lead_min ?? 0)} min.
+              Flights departed {ev.date_min} → {ev.date_max}, n = {num(ev.n_matured)}, observed P(delay &gt; 15) ={' '}
+              {ev.delayed15_rate?.toFixed(2)}, median lead time between last score and departure{' '}
+              {Math.round(ev.median_lead_min ?? 0)} min.
             </p>
             <MetricTable
               rows={[
                 { label: 'XGBoost (live)', m: ev.model },
-                { label: 'airline × hour baseline', m: ev.baseline_airline_hour && !ev.baseline_airline_hour.error ? ev.baseline_airline_hour : undefined },
+                {
+                  label: 'airline × hour baseline',
+                  m: ev.baseline_airline_hour && !ev.baseline_airline_hour.error ? ev.baseline_airline_hour : undefined,
+                },
                 { label: 'observed rate / median', m: ev.naive_rate },
               ]}
             />
@@ -215,7 +267,11 @@ export default function Model() {
       </div>
 
       <div className="hk-card p-3">
-        <button className="text-sm text-accent cursor-pointer" onClick={() => setShowInterp((v) => !v)} aria-expanded={showInterp}>
+        <button
+          className="text-sm text-accent cursor-pointer"
+          onClick={() => setShowInterp((v) => !v)}
+          aria-expanded={showInterp}
+        >
           {showInterp ? 'Hide' : 'Show'} interpretation from the M2 report
         </button>
         {showInterp && (

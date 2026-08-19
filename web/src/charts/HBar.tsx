@@ -10,24 +10,63 @@ export interface HBarRow {
 }
 
 /** Horizontal ranked bars: one nominal series (slot-1 blue), n as a direct label at the bar end, tooltip per bar. */
-export function HBar({ rows, fmt, height, xDomain, unit }: { rows: HBarRow[]; fmt: (v: number) => string; height?: number; xDomain?: [number, number]; unit?: string }) {
+export function HBar({
+  rows,
+  fmt,
+  height,
+  xDomain,
+  unit,
+}: {
+  rows: HBarRow[]
+  fmt: (v: number) => string
+  height?: number
+  xDomain?: [number, number]
+  unit?: string
+}) {
   const h = height ?? Math.max(140, 26 * rows.length + 36)
   return (
     <ResponsiveContainer width="100%" height={h}>
       <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 56, bottom: 4, left: 4 }} barCategoryGap="28%">
         <CartesianGrid horizontal={false} stroke="#1c2739" />
-        <XAxis type="number" {...AXIS} tickFormatter={fmt} domain={xDomain ?? [0, 'auto']} label={unit ? { value: unit, position: 'insideBottomRight', fill: MUTED, fontSize: 10, dy: 8 } : undefined} />
-        <YAxis type="category" dataKey="label" width={170} {...AXIS} tick={{ fill: '#b4bdcc', fontSize: 11 }} interval={0} />
+        <XAxis
+          type="number"
+          {...AXIS}
+          tickFormatter={fmt}
+          domain={xDomain ?? [0, 'auto']}
+          label={unit ? { value: unit, position: 'insideBottomRight', fill: MUTED, fontSize: 10, dy: 8 } : undefined}
+        />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={170}
+          {...AXIS}
+          tick={{ fill: '#b4bdcc', fontSize: 11 }}
+          interval={0}
+        />
         <Tooltip
           cursor={{ fill: 'rgba(255,255,255,0.04)' }}
           content={({ active, payload }) => {
             const r = payload?.[0]?.payload as HBarRow | undefined
             if (!active || !r) return null
-            return <TipBox title={r.label} rows={[['value', fmt(r.value)], ...(r.n != null ? ([['n', r.n.toLocaleString()]] as [string, string][]) : []), ...(r.extra ?? [])]} />
+            return (
+              <TipBox
+                title={r.label}
+                rows={[
+                  ['value', fmt(r.value)],
+                  ...(r.n != null ? ([['n', r.n.toLocaleString()]] as [string, string][]) : []),
+                  ...(r.extra ?? []),
+                ]}
+              />
+            )
           }}
         />
         <Bar dataKey="value" fill={BLUE} radius={[0, 2, 2, 0]} isAnimationActive={false}>
-          <LabelList dataKey="n" position="right" formatter={(v) => `n=${Number(v).toLocaleString()}`} style={{ fill: MUTED, fontSize: 10 }} />
+          <LabelList
+            dataKey="n"
+            position="right"
+            formatter={(v) => `n=${Number(v).toLocaleString()}`}
+            style={{ fill: MUTED, fontSize: 10 }}
+          />
         </Bar>
       </BarChart>
     </ResponsiveContainer>
