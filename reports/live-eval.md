@@ -1,6 +1,6 @@
 # Live evaluation — predictions vs actuals
 
-Generated 2026-08-19T10:46:40+00:00. Window: flights departed in the last 7 days; per flight, the last prediction written before its actual departure. Matured predictions: **1057**.
+Generated 2026-08-19T10:49:46+00:00. Window: flights departed in the last 7 days; per flight, the last prediction written before its actual departure. Matured predictions: **1057**.
 
 Dates 2026-08-17..2026-08-19; observed P(delay > 15) = 0.2091; median lead time between last score and departure = 23.7 min.
 
