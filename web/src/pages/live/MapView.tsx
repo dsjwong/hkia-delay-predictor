@@ -33,7 +33,7 @@ interface Plotted extends TrackedAircraft {
 
 function tooltipHtml(d: Plotted): string {
   const head = `<b>${d.callsign || '—'}</b> ${d.reg} ${d.type}<br/>${d.onGround ? 'ground' : Math.round(d.altFt).toLocaleString() + ' ft'} · ${d.gsKt == null ? '' : Math.round(d.gsKt) + ' kt'}`
-  if (!d.flight) return `${head}<br/><span style="color:#8a94a6">not an HKIA departure we track</span>`
+  if (!d.flight) return `${head}<br/><span style="color:#71717a">not an HKIA departure we track</span>`
   const f = d.flight
   const pred = f.pred_min == null ? '' : ` · pred ${Math.round(f.pred_min)} min`
   return `${head}<br/>${f.flight_no} → ${d.destLabel} · ${d.airlineName}<br/>sched ${hm(f.sched_ts)} · actual ${hm(f.actual_ts)}<br/>P(delay > 15) ${f.p == null ? 'not scored' : pct(f.p)}${pred}`
@@ -46,6 +46,7 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
   const data = useRef<TrackedAircraft[]>(aircraft)
   const sel = useRef<string | null>(selectedHex)
   const onSelectRef = useRef(onSelect)
+  const hover = useRef<string | null>(null)
   useEffect(() => {
     data.current = aircraft
     sel.current = selectedHex
@@ -61,28 +62,34 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       zoom: 7.4,
       minZoom: 5,
       maxZoom: 13,
-      attributionControl: { compact: true },
+      attributionControl: false,
     })
-    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+    m.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
+    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     m.keyboard.enable()
     const ov = new MapboxOverlay({
       interleaved: false,
       getTooltip: (info: PickingInfo) =>
         info.object && (info.object as Plotted).callsign !== undefined
           ? {
-              html: `<div style="font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.45">${tooltipHtml(info.object as Plotted)}</div>`,
+              html: `<div style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5">${tooltipHtml(info.object as Plotted)}</div>`,
               style: {
-                backgroundColor: '#182438',
-                color: '#e6ebf2',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '6px',
-                padding: '6px 8px',
+                backgroundColor: 'rgba(31,31,35,0.92)',
+                color: '#fafafa',
+                border: '1px solid #3f3f46',
+                borderRadius: '8px',
+                padding: '6px 10px',
+                backdropFilter: 'blur(8px)',
               },
             }
           : null,
       onClick: (info: PickingInfo) => {
         const o = info.object as Plotted | undefined
         onSelectRef.current(o ? o.hex : null)
+      },
+      onHover: (info: PickingInfo) => {
+        const o = info.object as Plotted | undefined
+        hover.current = o ? o.hex : null
       },
     })
     m.addControl(ov)
@@ -95,7 +102,7 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       getPolygon: (d: { poly: [number, number][] }) => d.poly,
       stroked: true,
       filled: false,
-      getLineColor: [57, 135, 229, 70],
+      getLineColor: [161, 161, 170, 55],
       lineWidthMinPixels: 1,
       pickable: false,
     })
@@ -104,8 +111,8 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       data: [{ pos: [HKIA.lon, HKIA.lat] }],
       getPosition: (d: { pos: [number, number] }) => d.pos,
       getRadius: 900,
-      getFillColor: [57, 135, 229, 90],
-      getLineColor: [57, 135, 229, 220],
+      getFillColor: [245, 158, 11, 60],
+      getLineColor: [245, 158, 11, 200],
       stroked: true,
       lineWidthMinPixels: 1.5,
       pickable: false,
@@ -115,23 +122,26 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       data: [{ pos: [HKIA.lon, HKIA.lat - 0.07], txt: 'VHHH  HKIA  RWY 07L/25R 07R/25L' }],
       getPosition: (d: { pos: [number, number] }) => d.pos,
       getText: (d: { txt: string }) => d.txt,
-      getColor: [180, 189, 204, 255],
+      getColor: [161, 161, 170, 255],
       getSize: 11,
       getAlignmentBaseline: 'top',
-      fontFamily: 'Menlo, Consolas, monospace',
+      fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
       pickable: false,
     })
 
+    // prefers-reduced-motion: no gliding — positions jump on each poll (1 fps redraw) instead of 10 fps dead-reckoning
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const frameMs = reduce ? 1000 : 100
     let raf = 0
     let last = 0
     const frame = (t: number) => {
       raf = requestAnimationFrame(frame)
-      if (t - last < 100) return // ~10 fps is plenty for gliding icons
+      if (t - last < frameMs) return // ~10 fps is plenty for gliding icons
       last = t
       const now = Date.now()
       const plotted: Plotted[] = data.current.map((a) => {
         const p = deadReckon(
-          { lat: a.lat, lon: a.lon, gsKt: a.onGround ? 0 : a.gsKt, trackDeg: a.trackDeg, t: a.posAt },
+          { lat: a.lat, lon: a.lon, gsKt: a.onGround || reduce ? 0 : a.gsKt, trackDeg: a.trackDeg, t: a.posAt },
           (now - a.posAt) / 1000,
           90,
         )
@@ -142,7 +152,7 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
           color = [r, g, b, 255]
           size = 30
         } else if (a.flight) {
-          color = [57, 135, 229, 255]
+          color = [250, 250, 250, 255]
           size = 28
         } else {
           color = altGrey(a.altFt, a.onGround)
@@ -153,6 +163,7 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       const others = plotted.filter((d) => !d.flight)
       const tracked = plotted.filter((d) => !!d.flight)
       const selected = plotted.filter((d) => d.hex === sel.current)
+      const hovered = plotted.filter((d) => d.hex === hover.current && d.hex !== sel.current)
       const common = {
         iconAtlas: PLANE_ATLAS,
         iconMapping: PLANE_MAPPING,
@@ -172,6 +183,19 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
           hkia,
           label,
           new ScatterplotLayer({
+            id: 'hovered',
+            data: hovered,
+            getPosition: (d: Plotted) => d.pos,
+            getRadius: 18,
+            radiusUnits: 'pixels',
+            stroked: true,
+            filled: false,
+            getLineColor: [250, 250, 250, 160],
+            lineWidthMinPixels: 1,
+            pickable: false,
+            updateTriggers: { getPosition: now },
+          }),
+          new ScatterplotLayer({
             id: 'selected',
             data: selected,
             getPosition: (d: Plotted) => d.pos,
@@ -179,8 +203,8 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
             radiusUnits: 'pixels',
             stroked: true,
             filled: false,
-            getLineColor: [230, 235, 242, 220],
-            lineWidthMinPixels: 1.5,
+            getLineColor: [245, 158, 11, 230],
+            lineWidthMinPixels: 2,
             pickable: false,
             updateTriggers: { getPosition: now },
           }),

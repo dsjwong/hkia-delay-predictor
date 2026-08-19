@@ -10,8 +10,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { AXIS, Legend, TipBox } from './theme'
-import { BLUE, GRID, ORANGE } from './tokens'
+import { AXIS, CURSOR, CURSOR_LINE, GRID_PROPS, Legend, TipBox } from './theme'
+import { CARD, NEUTRAL, SERIES_1, SERIES_2 } from './tokens'
 import type { Flight } from '@/lib/types'
 import { hm, minuteOfDayHKT, pct, signed } from '@/lib/time'
 
@@ -39,17 +39,20 @@ export function Timeline({
       .map((f) => ({ x: minuteOfDayHKT(f.sched_ts), y: f.p as number, f }))
   const dep = pts('departed')
   const sch = pts('scheduled')
+  const dot = (fill: string) => (p: { cx?: number; cy?: number }) => (
+    <circle cx={p.cx} cy={p.cy} r={4.5} fill={fill} stroke={CARD} strokeWidth={1.5} style={{ cursor: 'pointer' }} />
+  )
   return (
     <div>
       <Legend
         items={[
-          { color: BLUE, label: 'departed', shape: 'dot' },
-          { color: ORANGE, label: 'not yet departed', shape: 'dot' },
+          { color: SERIES_1, label: 'departed', shape: 'dot' },
+          { color: SERIES_2, label: 'not yet departed', shape: 'dot' },
         ]}
       />
       <ResponsiveContainer width="100%" height={260}>
         <ScatterChart margin={{ top: 8, right: 12, bottom: 4, left: -4 }}>
-          <CartesianGrid stroke={GRID} vertical={false} />
+          <CartesianGrid {...GRID_PROPS} />
           <XAxis
             type="number"
             dataKey="x"
@@ -68,9 +71,9 @@ export function Timeline({
             {...AXIS}
             width={46}
           />
-          <ReferenceLine y={0.5} stroke={GRID} />
+          <ReferenceLine y={0.5} stroke={NEUTRAL} />
           <Tooltip
-            cursor={{ strokeDasharray: undefined, stroke: GRID }}
+            cursor={CURSOR_LINE}
             content={({ active, payload }) => {
               const p = payload?.[0]?.payload as Pt | undefined
               if (!active || !p) return null
@@ -94,10 +97,8 @@ export function Timeline({
           <Scatter
             name="departed"
             data={dep}
-            fill={BLUE}
-            stroke="#0b1220"
-            strokeWidth={1}
-            r={4}
+            fill={SERIES_1}
+            shape={dot(SERIES_1)}
             onClick={(d) => onPick?.((d as unknown as Pt).f)}
             cursor="pointer"
             isAnimationActive={false}
@@ -105,10 +106,8 @@ export function Timeline({
           <Scatter
             name="not yet departed"
             data={sch}
-            fill={ORANGE}
-            stroke="#0b1220"
-            strokeWidth={1}
-            r={4}
+            fill={SERIES_2}
+            shape={dot(SERIES_2)}
             onClick={(d) => onPick?.((d as unknown as Pt).f)}
             cursor="pointer"
             isAnimationActive={false}
@@ -133,13 +132,13 @@ export function HourlyBars({ rows }: { rows: HourRow[] }) {
     <div>
       <Legend
         items={[
-          { color: BLUE, label: 'predicted mean P(delay > 15)' },
-          { color: ORANGE, label: 'observed share > 15 min (departed)' },
+          { color: SERIES_1, label: 'predicted mean P(delay > 15)' },
+          { color: SERIES_2, label: 'observed share > 15 min (departed)' },
         ]}
       />
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 4, left: -4 }} barCategoryGap="18%" barGap={1}>
-          <CartesianGrid stroke={GRID} vertical={false} />
+        <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 4, left: -4 }} barCategoryGap="22%" barGap={2}>
+          <CartesianGrid {...GRID_PROPS} />
           <XAxis dataKey="hour" {...AXIS} tickFormatter={(h) => String(h).padStart(2, '0')} interval={1} />
           <YAxis
             domain={[0, 1]}
@@ -149,7 +148,7 @@ export function HourlyBars({ rows }: { rows: HourRow[] }) {
             width={46}
           />
           <Tooltip
-            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+            cursor={CURSOR}
             content={({ active, payload }) => {
               const r = payload?.[0]?.payload as HourRow | undefined
               if (!active || !r) return null
@@ -164,8 +163,8 @@ export function HourlyBars({ rows }: { rows: HourRow[] }) {
               )
             }}
           />
-          <Bar dataKey="p" name="predicted" fill={BLUE} isAnimationActive={false} radius={[2, 2, 0, 0]} />
-          <Bar dataKey="obs" name="observed" fill={ORANGE} isAnimationActive={false} radius={[2, 2, 0, 0]} />
+          <Bar dataKey="p" name="predicted" fill={SERIES_1} isAnimationActive={false} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="obs" name="observed" fill={SERIES_2} isAnimationActive={false} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -1,28 +1,46 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, X } from 'lucide-react'
 import { useAdsb } from '@/hooks/useAdsb'
 import { useDepartures } from '@/lib/data'
 import { useMetaCtx } from '@/lib/meta-context'
 import { POLL_MS, PROXY_POLL_MS, RADIUS_NM } from '@/lib/adsb'
-import { hms, hm } from '@/lib/time'
+import { hm } from '@/lib/time'
 import { AMBER_RAMP } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import { Sheet } from '@/components/ui/sheet'
-import { Tile } from '@/components/ui/tile'
+import { Button } from '@/components/ui/button'
 import { Tooltip } from '@/components/ui/tooltip'
+import { Skeleton } from '@/components/ui/skeleton'
 import { PBar } from '@/components/PBar'
 import { FlightCard } from '@/components/FlightCard'
 import { WeatherStrip } from '@/components/WeatherStrip'
 import { MapView } from './live/MapView'
-import { trackAircraft } from './live/match'
+import { trackAircraft, type TrackedAircraft } from './live/match'
 import type { Flight } from '@/lib/types'
+
+function useNow(ms = 1000) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), ms)
+    return () => window.clearInterval(id)
+  }, [ms])
+  return now
+}
+
+const ROUTE_LABEL = { env: 'own relay', direct: 'direct', proxy: 'public proxy' } as const
 
 export default function Live() {
   const { meta } = useMetaCtx()
   const today = useDepartures('today')
   const yday = useDepartures('yesterday')
   const feed = useAdsb(true)
+  const now = useNow()
   const [selected, setSelected] = useState<string | null>(null)
-  const onSelect = useCallback((hex: string | null) => setSelected(hex), [])
+  const [selFlight, setSelFlight] = useState<Flight | null>(null)
+  const onSelect = useCallback((hex: string | null) => {
+    setSelected(hex)
+    if (hex) setSelFlight(null)
+  }, [])
 
   const pool = useMemo(() => [...(yday.data?.flights ?? []), ...(today.data?.flights ?? [])], [yday.data, today.data])
   const tracked = useMemo(() => trackAircraft(feed.aircraft, pool, meta.data), [feed.aircraft, pool, meta.data])
@@ -31,218 +49,259 @@ export default function Live() {
     [tracked],
   )
   const sel = selected ? (tracked.find((a) => a.hex === selected) ?? null) : null
-  const nRecent = useMemo(() => {
-    const now = Date.now()
-    return pool.filter(
-      (f) => f.actual_ts && now - Date.parse(f.actual_ts) >= 0 && now - Date.parse(f.actual_ts) <= 45 * 60000,
-    ).length
-  }, [pool])
-
-  const feedBadge = feed.error
-    ? feed.aircraft.length
-      ? { v: 'crit' as const, t: `feed unavailable — showing last good frame (${feed.error})` }
-      : { v: 'crit' as const, t: `feed unavailable (${feed.error}) — retrying with backoff` }
-    : feed.route === 'proxy'
-      ? {
-          v: 'warn' as const,
-          t: `adsb.lol ${feed.fetchedAt ? hms(new Date(feed.fetchedAt)) : '—'} HKT · via public CORS proxy, every ${PROXY_POLL_MS / 1000} s`,
-        }
-      : {
-          v: 'default' as const,
-          t: `adsb.lol ${feed.fetchedAt ? hms(new Date(feed.fetchedAt)) : '—'} HKT · every ${POLL_MS / 1000} s`,
-        }
-  const feedDown = !!feed.error && !feed.aircraft.length && feed.failures >= 2
   const recent = useMemo(() => {
-    const now = Date.now()
+    const t = Date.now()
     return pool
-      .filter((f) => f.actual_ts && now - Date.parse(f.actual_ts) >= 0 && now - Date.parse(f.actual_ts) <= 2 * 3600000)
+      .filter((f) => f.actual_ts && t - Date.parse(f.actual_ts) >= 0 && t - Date.parse(f.actual_ts) <= 2 * 3600000)
       .sort((a, b) => (a.actual_ts! < b.actual_ts! ? 1 : -1))
       .slice(0, 12)
   }, [pool])
-  const [selFlight, setSelFlight] = useState<Flight | null>(null)
+
+  const ageS = feed.fetchedAt ? Math.max(0, Math.round((now - feed.fetchedAt) / 1000)) : null
+  const feedDown = !!feed.error && !feed.aircraft.length && feed.failures >= 2
+  const feedTone: 'default' | 'warn' | 'crit' = feed.error ? 'crit' : feed.route === 'proxy' ? 'warn' : 'default'
+  const feedText = feed.error
+    ? feed.aircraft.length
+      ? `feed error · last frame ${ageS}s ago`
+      : 'feed unavailable · retrying'
+    : feed.route
+      ? `adsb.lol · ${ROUTE_LABEL[feed.route]} · ${ageS}s`
+      : 'connecting to adsb.lol…'
+  const loadingPool = (today.loading && !today.data) || (yday.loading && !yday.data)
+
+  const showCard = sel || selFlight
+  const closeCard = () => {
+    setSelected(null)
+    setSelFlight(null)
+  }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,2.5fr)_minmax(300px,1.1fr)]">
-      <section className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5 mb-2">
-          <Badge>
-            {feed.aircraft.length} aircraft in {RADIUS_NM} nm
-          </Badge>
-          <Badge variant={matched.length ? 'ok' : 'default'}>{matched.length} HKIA departures tracked</Badge>
+    <div className="flex flex-col lg:block lg:h-[calc(100dvh-49px)] lg:overflow-hidden">
+      {/* ---- map ---- */}
+      <div className="hk-map-shell relative h-[58dvh] min-h-[360px] lg:h-auto lg:absolute lg:inset-0">
+        <MapView aircraft={tracked} selectedHex={selected} onSelect={onSelect} className="absolute inset-0" />
+
+        {/* top-left: stat chips */}
+        <div className="absolute left-3 top-3 z-10 flex flex-wrap items-center gap-1.5 max-w-[calc(100%-24px)] lg:max-w-[calc(100%-400px)]">
+          <Chip label="aircraft" value={feed.aircraft.length} sub={`${RADIUS_NM} nm`} />
+          <Chip label="tracked" value={matched.length} sub="HKIA deps" tone={matched.length ? 'ok' : undefined} />
           <Tooltip
-            content="Free community ADS-B feed. api.adsb.lol sends no CORS headers, so a browser can only read it through a relay: a 20-line Cloudflare Worker (web/worker/, set ADSB_PROXY_URL) polled every 8 s, or the public api.cors.lol proxy as a slow fallback (~1 request/min). Positions glide between polls by dead-reckoning on ground speed + track."
             side="bottom"
+            content="Free community ADS-B feed. api.adsb.lol sends no CORS headers, so a browser can only read it through a relay: your own Cloudflare Worker (web/worker/, ADSB_PROXY_URL) polled every 8 s, or the public api.cors.lol proxy as a slow fallback (~1 request/min). Positions glide between polls by dead-reckoning on ground speed + track."
           >
-            <Badge variant={feedBadge.v} tabIndex={0}>
-              {feedBadge.t}
-            </Badge>
+            <span
+              tabIndex={0}
+              className={cn(
+                'hk-glass inline-flex items-center gap-2 h-8 px-2.5 font-mono text-[0.72rem] whitespace-nowrap',
+                feedTone === 'crit' ? 'text-critical' : feedTone === 'warn' ? 'text-warning' : 'text-ink-2',
+              )}
+            >
+              <span
+                className={cn('hk-dot', feedTone === 'crit' ? 'off' : feedTone === 'warn' ? 'idle' : '')}
+                aria-hidden="true"
+              />
+              {feedText}
+            </span>
           </Tooltip>
         </div>
-        <div className="relative hk-card overflow-hidden h-[52vh] min-h-[360px] lg:h-[calc(100vh-190px)] lg:min-h-[520px]">
-          <MapView aircraft={tracked} selectedHex={selected} onSelect={onSelect} className="absolute inset-0" />
-          {feedDown && (
-            <div
-              className="absolute left-3 bottom-3 max-w-[420px] hk-card px-3 py-2 text-xs text-ink-2 z-10"
-              role="status"
-            >
-              <b className="text-critical">Live feed unavailable from this origin.</b> api.adsb.lol (and adsb.fi /
-              airplanes.live / OpenSky) send no CORS headers, and the public proxy fallback is rate-limited. The map
-              still works with a tiny relay: deploy <code className="font-mono">web/worker/adsb-proxy.js</code> to
-              Cloudflare Workers (free) and set the repository variable{' '}
-              <code className="font-mono">ADSB_PROXY_URL</code> — see the README. Retrying in the background.
-            </div>
-          )}
-          <Sheet
-            open={!!sel}
-            onClose={() => setSelected(null)}
-            inline
-            title={sel?.flight ? `${sel.flight.flight_no} · ${sel.callsign}` : sel?.callsign || 'aircraft'}
-          >
-            {sel?.flight ? (
-              <FlightCard flight={sel.flight} meta={meta.data} aircraft={sel} />
-            ) : sel ? (
-              <div className="space-y-2 text-sm">
-                <div className="text-ink-2">
-                  Not an HKIA departure we track (no matching flight number in today's or yesterday's schedule, or it is
-                  an arrival / overflight).
-                </div>
-                <dl className="grid grid-cols-2 gap-y-1 text-xs">
-                  <dt className="text-muted">registration / type</dt>
-                  <dd className="hk-num">
-                    {sel.reg || '—'} / {sel.type || '—'}
-                  </dd>
-                  <dt className="text-muted">altitude</dt>
-                  <dd className="hk-num">
-                    {sel.onGround ? 'on ground' : `${Math.round(sel.altFt).toLocaleString()} ft`}
-                  </dd>
-                  <dt className="text-muted">ground speed / track</dt>
-                  <dd className="hk-num">
-                    {sel.gsKt == null ? '—' : Math.round(sel.gsKt) + ' kt'} /{' '}
-                    {sel.trackDeg == null ? '—' : Math.round(sel.trackDeg) + '°'}
-                  </dd>
-                  <dt className="text-muted">distance from HKIA</dt>
-                  <dd className="hk-num">{sel.distNm.toFixed(0)} nm</dd>
-                </dl>
-              </div>
-            ) : null}
-          </Sheet>
-        </div>
-        <Legend />
-      </section>
 
-      <aside className="min-w-0 space-y-3" aria-label="Live panel">
-        <div className="grid grid-cols-3 gap-2">
-          <Tile label="In range" value={feed.aircraft.length} sub={`within ${RADIUS_NM} nm`} />
-          <Tile
-            label="Tracked"
-            value={matched.length}
-            sub="HKIA departures"
-            hint="Aircraft whose callsign matches a flight number in today's / yesterday's HKIA departure schedule (CPA261 ↔ CX 261)."
-          />
-          <Tile
-            label="Departed"
-            value={nRecent}
-            sub="last 45 min"
-            hint="Flights with an actual departure time in the last 45 min according to the latest snapshot."
-          />
-        </div>
-        <WeatherStrip compact />
-        <div>
-          <h3 className="hk-kicker mb-1.5">Tracked departures</h3>
-          {matched.length ? (
-            <div className="hk-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left hk-kicker border-b border-border">
-                    <th className="px-2.5 py-1.5 font-normal">Sched</th>
-                    <th className="px-2 py-1.5 font-normal">Flight</th>
-                    <th className="px-2 py-1.5 font-normal">To</th>
-                    <th className="px-2 py-1.5 font-normal">P(&gt;15)</th>
-                  </tr>
-                </thead>
-                <tbody>
+        {/* bottom-left: legend (above the attribution) */}
+        <Legend />
+
+        {feedDown && (
+          <div
+            className="absolute left-3 bottom-20 z-10 max-w-[400px] hk-glass px-3.5 py-2.5 text-xs text-ink-2 leading-relaxed"
+            role="status"
+          >
+            <b className="text-critical">Live feed unavailable from this origin.</b> api.adsb.lol (and adsb.fi /
+            airplanes.live / OpenSky) send no CORS headers, and the public proxy fallback is rate-limited. Deploy{' '}
+            <code className="font-mono">web/worker/adsb-proxy.js</code> to Cloudflare Workers (free) and set the
+            repository variable <code className="font-mono">ADSB_PROXY_URL</code> — see the README. Retrying.
+          </div>
+        )}
+      </div>
+
+      {/* ---- right panel ---- */}
+      <aside
+        className="lg:absolute lg:top-3 lg:right-3 lg:bottom-3 lg:w-[372px] lg:z-10 flex flex-col min-h-0 hk-glass lg:rounded-card rounded-none border-x-0 lg:border-x border-t lg:border-t bg-card lg:bg-card/80"
+        aria-label="Live panel"
+      >
+        {showCard ? (
+          <div className="flex flex-col min-h-0 hk-slide">
+            <div className="flex items-center gap-1 px-2 h-11 border-b border-border shrink-0">
+              <Button variant="ghost" size="icon" onClick={closeCard} aria-label="Back to the list">
+                <ArrowLeft size={16} />
+              </Button>
+              <div className="text-sm font-semibold truncate">
+                {sel?.flight
+                  ? `${sel.flight.flight_no} · ${sel.callsign}`
+                  : sel
+                    ? sel.callsign || sel.hex
+                    : selFlight?.flight_no}
+              </div>
+              <Button variant="ghost" size="icon" className="ml-auto" onClick={closeCard} aria-label="Close">
+                <X size={16} />
+              </Button>
+            </div>
+            <div className="overflow-y-auto px-4 py-4 min-h-0">
+              {sel?.flight ? (
+                <FlightCard flight={sel.flight} meta={meta.data} aircraft={sel} />
+              ) : sel ? (
+                <Untracked a={sel} />
+              ) : selFlight ? (
+                <FlightCard flight={selFlight} meta={meta.data} />
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-y-auto min-h-0 p-3 space-y-4">
+            <WeatherStrip compact />
+
+            <section aria-labelledby="tracked-h">
+              <div className="flex items-baseline justify-between mb-1.5">
+                <h3 id="tracked-h" className="hk-kicker">
+                  Tracked departures
+                </h3>
+                <span className="text-[0.7rem] text-muted hk-num">{matched.length}</span>
+              </div>
+              {loadingPool && !matched.length ? (
+                <div className="space-y-2" role="status" aria-label="loading">
+                  {[0, 1, 2].map((i) => (
+                    <Skeleton key={i} className="h-8" />
+                  ))}
+                </div>
+              ) : matched.length ? (
+                <ul className="divide-y divide-border/60 rounded-lg border border-border/60 overflow-hidden bg-card/40">
                   {matched.map((a) => (
-                    <tr
-                      key={a.hex}
-                      tabIndex={0}
-                      role="button"
-                      aria-pressed={a.hex === selected}
-                      onClick={() => setSelected(a.hex)}
-                      onKeyDown={(e) =>
-                        (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelected(a.hex))
-                      }
-                      className={`cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface-3 ${a.hex === selected ? 'bg-surface-3' : ''}`}
-                      title={`${a.flight!.flight_no} · ${a.airlineName} → ${a.destLabel} · click for the flight card`}
-                    >
-                      <td className="px-2.5 py-1.5 hk-num text-ink-2">{hm(a.flight!.sched_ts)}</td>
-                      <td className="px-2 py-1.5 font-medium">{a.flight!.flight_no}</td>
-                      <td className="px-2 py-1.5 text-ink-2">{a.flight!.dest}</td>
-                      <td className="px-2 py-1.5">
-                        <PBar p={a.flight!.p} width={48} />
-                      </td>
-                    </tr>
+                    <li key={a.hex}>
+                      <button
+                        type="button"
+                        onClick={() => onSelect(a.hex)}
+                        aria-pressed={a.hex === selected}
+                        className="w-full grid grid-cols-[44px_1fr_auto] items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-elev cursor-pointer"
+                        title={`${a.flight!.flight_no} · ${a.airlineName} → ${a.destLabel}`}
+                      >
+                        <span className="hk-num text-ink-2 text-xs">{hm(a.flight!.sched_ts)}</span>
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium">{a.flight!.flight_no}</span>
+                          <span className="text-ink-2"> → {a.flight!.dest}</span>
+                          <span className="text-muted text-xs">
+                            {' '}
+                            · {a.onGround ? 'ground' : `${Math.round(a.altFt / 100) * 100} ft`}
+                          </span>
+                        </span>
+                        <PBar p={a.flight!.p} width={44} />
+                      </button>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-xs text-muted">
-              No HKIA departure of the last few hours is currently inside the {RADIUS_NM} nm ring with a matching
-              callsign. Departures leave the ring ~15 min after take-off, so this list is usually short.
-            </p>
-          )}
-          <p className="text-[0.7rem] text-muted mt-1.5">
-            Match = ICAO airline code + flight number (CPA261 ↔ CX 261). Colour = latest P(delay &gt; 15) of that
-            flight; departed flights keep their last score. Click a plane or a row for the flight card.
-          </p>
-        </div>
-        <div>
-          <h3 className="hk-kicker mb-1.5">Recent departures (snapshot, last 2 h)</h3>
-          {recent.length ? (
-            <div className="hk-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left hk-kicker border-b border-border">
-                    <th className="px-2.5 py-1.5 font-normal">Actual</th>
-                    <th className="px-2 py-1.5 font-normal">Flight</th>
-                    <th className="px-2 py-1.5 font-normal">To</th>
-                    <th className="px-2 py-1.5 font-normal">Delay</th>
-                    <th className="px-2 py-1.5 font-normal">P(&gt;15)</th>
-                  </tr>
-                </thead>
-                <tbody>
+                </ul>
+              ) : (
+                <p className="text-xs text-muted leading-relaxed">
+                  No HKIA departure is inside the {RADIUS_NM} nm ring with a matching callsign right now. Departures
+                  leave the ring ~15 min after take-off, so this list is usually short.
+                </p>
+              )}
+            </section>
+
+            <section aria-labelledby="recent-h">
+              <div className="flex items-baseline justify-between mb-1.5">
+                <h3 id="recent-h" className="hk-kicker">
+                  Recent departures
+                </h3>
+                <span className="text-[0.7rem] text-muted">last 2 h · snapshot</span>
+              </div>
+              {loadingPool ? (
+                <div className="space-y-2" role="status" aria-label="loading">
+                  {[0, 1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-7" />
+                  ))}
+                </div>
+              ) : recent.length ? (
+                <ul className="divide-y divide-border/60 rounded-lg border border-border/60 overflow-hidden bg-card/40">
                   {recent.map((f) => (
-                    <tr
-                      key={f.flight_no + f.sched_ts}
-                      tabIndex={0}
-                      role="button"
-                      onClick={() => setSelFlight(f)}
-                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSelFlight(f))}
-                      className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface-3"
-                      title="open the flight card"
-                    >
-                      <td className="px-2.5 py-1 hk-num text-ink-2">{hm(f.actual_ts)}</td>
-                      <td className="px-2 py-1 font-medium">{f.flight_no}</td>
-                      <td className="px-2 py-1 text-ink-2">{f.dest}</td>
-                      <td className="px-2 py-1 hk-num text-ink-2">
-                        {f.delay_min == null ? '—' : (f.delay_min > 0 ? '+' : '') + f.delay_min}
-                      </td>
-                      <td className="px-2 py-1">
-                        <PBar p={f.p} width={40} />
-                      </td>
-                    </tr>
+                    <li key={f.flight_no + f.sched_ts}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(null)
+                          setSelFlight(f)
+                        }}
+                        className="w-full grid grid-cols-[44px_1fr_40px_auto] items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-elev cursor-pointer"
+                        title="open the flight card"
+                      >
+                        <span className="hk-num text-ink-2 text-xs">{hm(f.actual_ts)}</span>
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium">{f.flight_no}</span>
+                          <span className="text-ink-2"> → {f.dest}</span>
+                        </span>
+                        <span
+                          className={cn(
+                            'hk-num text-xs text-right',
+                            f.delay_min != null && f.delay_min > 15 ? 'text-warning' : 'text-ink-2',
+                          )}
+                        >
+                          {f.delay_min == null ? '—' : (f.delay_min > 0 ? '+' : '') + f.delay_min}
+                        </span>
+                        <PBar p={f.p} width={36} />
+                      </button>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-xs text-muted">No departures in the last 2 h in the latest snapshot.</p>
-          )}
-        </div>
-        <Sheet open={!!selFlight} onClose={() => setSelFlight(null)} title={selFlight ? selFlight.flight_no : ''}>
-          {selFlight && <FlightCard flight={selFlight} meta={meta.data} />}
-        </Sheet>
+                </ul>
+              ) : (
+                <p className="text-xs text-muted">No departures in the last 2 h in the latest snapshot.</p>
+              )}
+            </section>
+
+            <p className="text-[0.68rem] text-muted leading-relaxed">
+              Match = ICAO airline code + flight number (CPA261 ↔ CX 261). Colour = latest P(delay &gt; 15) of that
+              flight; departed flights keep their last score. Click a plane or a row for the flight card. Feed polled
+              every {feed.route === 'proxy' ? PROXY_POLL_MS / 1000 : POLL_MS / 1000} s.
+            </p>
+          </div>
+        )}
       </aside>
+    </div>
+  )
+}
+
+function Chip({ label, value, sub, tone }: { label: string; value: number | string; sub?: string; tone?: 'ok' }) {
+  return (
+    <span className="hk-glass inline-flex items-baseline gap-1.5 h-8 px-2.5 text-xs whitespace-nowrap">
+      <span className={cn('text-base font-semibold tracking-tight hk-num', tone === 'ok' ? 'text-good' : 'text-ink')}>
+        {value}
+      </span>
+      <span className="text-ink-2">{label}</span>
+      {sub && <span className="text-muted">· {sub}</span>}
+    </span>
+  )
+}
+
+function Untracked({ a }: { a: TrackedAircraft }) {
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span className="text-xl font-semibold tracking-tight font-mono">{a.callsign || a.hex}</span>
+        <Badge>not an HKIA departure</Badge>
+      </div>
+      <div className="text-ink-2 text-xs leading-relaxed">
+        No matching flight number in today's or yesterday's departure schedule — an arrival, overflight or general
+        aviation.
+      </div>
+      <dl className="grid grid-cols-2 gap-y-1.5 text-xs">
+        <dt className="text-muted">registration / type</dt>
+        <dd className="hk-num">
+          {a.reg || '—'} / {a.type || '—'}
+        </dd>
+        <dt className="text-muted">altitude</dt>
+        <dd className="hk-num">{a.onGround ? 'on ground' : `${Math.round(a.altFt).toLocaleString()} ft`}</dd>
+        <dt className="text-muted">ground speed / track</dt>
+        <dd className="hk-num">
+          {a.gsKt == null ? '—' : Math.round(a.gsKt) + ' kt'} /{' '}
+          {a.trackDeg == null ? '—' : Math.round(a.trackDeg) + '°'}
+        </dd>
+        <dt className="text-muted">distance from HKIA</dt>
+        <dd className="hk-num">{a.distNm.toFixed(0)} nm</dd>
+      </dl>
     </div>
   )
 }
@@ -250,29 +309,30 @@ export default function Live() {
 function Legend() {
   return (
     <div
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-[0.72rem] text-ink-2"
+      className="absolute left-3 bottom-9 z-10 hk-glass px-3 py-2 hidden sm:flex flex-col gap-1 text-[0.7rem] text-ink-2"
       aria-label="Map legend"
     >
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-2">
         <span
-          className="inline-block w-[70px] h-2 rounded-full"
+          className="inline-block w-12 h-1.5 rounded-full"
           style={{ background: `linear-gradient(90deg, ${AMBER_RAMP.join(',')})` }}
           aria-hidden="true"
         />
-        HKIA departure · P(delay &gt; 15) 0 → 100 %
+        departure · P(delay &gt; 15) 0 → 100 %
       </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="inline-block w-2.5 h-2.5 rounded-full bg-accent" aria-hidden="true" /> tracked, not scored
+      <span className="inline-flex items-center gap-2">
+        <span className="inline-block w-12 h-1.5 rounded-full bg-ink" aria-hidden="true" />
+        departure, not scored
       </span>
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-2">
         <span
-          className="inline-block w-[70px] h-2 rounded-full"
-          style={{ background: 'linear-gradient(90deg,#78829a,#ecf0f6)' }}
+          className="inline-block w-12 h-1.5 rounded-full"
+          style={{ background: 'linear-gradient(90deg,#71717a,#f4f4f5)' }}
           aria-hidden="true"
-        />{' '}
+        />
         other traffic · altitude low → high
       </span>
-      <span className="text-muted">rings: 50 / 100 nm · data: adsb.lol</span>
+      <span className="text-muted">rings 50 / 100 nm · data adsb.lol</span>
     </div>
   )
 }

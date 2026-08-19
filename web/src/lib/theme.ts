@@ -1,25 +1,33 @@
-/** Palette tokens shared with app/theme.py; validated with the dataviz skill's validate_palette.js on #0b1220 (dark):
- *  categorical #3987e5 #d95926 #199e70 #c98500 (adjacent pairs PASS), amber ramp (ordinal PASS), blue ramp (PASS). */
-export const SURFACE = '#0b1220'
-export const SURFACE_2 = '#121c2e'
-export const BORDER = 'rgba(255,255,255,0.08)'
-export const INK = '#e6ebf2'
-export const INK_2 = '#b4bdcc'
-export const MUTED = '#8a94a6'
-export const GRID = '#1c2739'
-export const BLUE = '#3987e5'
-export const ORANGE = '#d95926'
-export const AQUA = '#199e70'
-export const YELLOW = '#c98500'
-export const GREY = '#5b6577'
-export const GOOD = '#0ca30c'
-export const WARNING = '#fab219'
-export const CRITICAL = '#d03b3b'
-export const CATEGORICAL = [BLUE, ORANGE, AQUA, YELLOW]
-/** P(delay > 15): single-hue amber, dim -> bright on the dark surface */
-export const AMBER_RAMP = ['#6b4608', '#94620a', '#bd7f0c', '#e39d14', '#ffbf3d']
-/** heatmap magnitude: single-hue blue */
-export const BLUE_RAMP = ['#184f95', '#256abf', '#3987e5', '#6da7ec', '#9ec5f4']
+/** Colour tokens — shadcn/ui "zinc" dark + one amber accent (see docs/design.md).
+ *  Validated with the dataviz skill's validate_palette.js on the card surface #18181b (dark):
+ *  categorical [#d97706 amber-600, #0d9488 teal-600, #8b5cf6 violet-500, #db2777 pink-600] — every check PASS
+ *  (worst adjacent CVD ΔE 10.4, normal-vision 24.3, all ≥ 3:1). Amber ramp = single-hue sequential, dim → bright. */
+export const BG = '#09090b'
+export const CARD = '#18181b'
+export const ELEV = '#1f1f23'
+export const ELEV_2 = '#27272a'
+export const BORDER = '#27272a'
+export const BORDER_2 = '#3f3f46'
+export const INK = '#fafafa'
+export const INK_2 = '#a1a1aa'
+export const MUTED = '#71717a'
+export const GRID = '#27272a'
+/** categorical slots, fixed order: 1 = model / predicted (amber), 2 = observed / actual (teal), 3, 4 rarely used */
+export const SERIES_1 = '#d97706'
+export const SERIES_2 = '#0d9488'
+export const SERIES_3 = '#8b5cf6'
+export const SERIES_4 = '#db2777'
+export const CATEGORICAL = [SERIES_1, SERIES_2, SERIES_3, SERIES_4]
+export const ACCENT = '#f59e0b'
+export const GOOD = '#22c55e'
+export const WARNING = '#f59e0b'
+export const CRITICAL = '#ef4444'
+/** neutral reference line / "perfect" diagonal */
+export const NEUTRAL = '#52525b'
+/** P(delay > 15): single-hue amber, dim -> bright on the dark surface (amber-900 → amber-300) */
+export const AMBER_RAMP = ['#78350f', '#b45309', '#d97706', '#f59e0b', '#fcd34d']
+/** heatmap magnitude (delay minutes / late share) — same amber hue so "more amber = more delay" holds app-wide */
+export const HEAT_RAMP = ['#2a1a08', '#6b3410', '#a85a0c', '#d98a1b', '#f7c55a']
 
 function hex2rgb(h: string): [number, number, number] {
   const s = h.replace('#', '')
@@ -48,18 +56,18 @@ export function rampHex(ramp: string[], t: number | null | undefined): string {
 
 export const amberRgb = (p: number | null | undefined) => rampRgb(AMBER_RAMP, p)
 export const amberHex = (p: number | null | undefined) => rampHex(AMBER_RAMP, p)
-export const blueHex = (t: number | null | undefined) => rampHex(BLUE_RAMP, t)
+export const heatHex = (t: number | null | undefined) => rampHex(HEAT_RAMP, t)
 
-/** Other traffic: grey -> white by altitude (0..40k ft), dim grey on the ground. */
+/** Other traffic: zinc-500 -> zinc-100 by altitude (0..40k ft), dim zinc-600 on the ground. */
 export function altGrey(altFt: number, onGround: boolean): [number, number, number, number] {
-  if (onGround) return [95, 104, 122, 200]
+  if (onGround) return [82, 82, 91, 190]
   const f = Math.min(Math.max(altFt, 0), 40000) / 40000
-  const lo = [120, 130, 150]
-  const hi = [236, 240, 246]
+  const lo = [113, 113, 122]
+  const hi = [244, 244, 245]
   return [
     Math.round(lo[0] + (hi[0] - lo[0]) * f),
     Math.round(lo[1] + (hi[1] - lo[1]) * f),
     Math.round(lo[2] + (hi[2] - lo[2]) * f),
-    230,
+    235,
   ]
 }

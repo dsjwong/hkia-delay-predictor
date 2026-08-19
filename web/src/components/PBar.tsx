@@ -15,13 +15,13 @@ export function PBar({
   if (p == null) return <span className={cn('text-muted text-xs', className)}>—</span>
   return (
     <span className={cn('inline-flex items-center gap-2 hk-num', className)} title={`P(delay > 15 min) = ${pct(p)}`}>
-      <span className="h-[6px] rounded-full bg-surface-3 overflow-hidden" style={{ width }} aria-hidden="true">
+      <span className="h-[5px] rounded-full bg-elev-2 overflow-hidden" style={{ width }} aria-hidden="true">
         <span
           className="block h-full rounded-full"
           style={{ width: `${Math.round(p * 100)}%`, background: amberHex(p) }}
         />
       </span>
-      <span className="text-xs text-ink-2 w-9 text-right">{pct(p)}</span>
+      <span className="text-xs text-ink w-9 text-right">{pct(p)}</span>
     </span>
   )
 }

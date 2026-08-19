@@ -1,4 +1,4 @@
-import { BLUE, GRID, MUTED } from '@/lib/theme'
+import { ACCENT, CARD, GRID, MUTED } from '@/lib/theme'
 import { hm, pct } from '@/lib/time'
 
 /** Tiny inline SVG line of a flight's prediction history ([epoch_s, p, pred_min]); every point also has a <title>. */
@@ -32,15 +32,15 @@ export function Sparkline({
       <text x={width - 4} y={10} fontSize={9} fill={MUTED} textAnchor="end">
         {pct(ps[ps.length - 1])} · axis 0–{Math.round(yMax * 100)} %
       </text>
-      <path d={d} fill="none" stroke={BLUE} strokeWidth={1.5} />
+      <path d={d} fill="none" stroke={ACCENT} strokeWidth={1.5} />
       {pts.map((p, i) => (
         <circle
           key={i}
           cx={x(p[0])}
           cy={y(p[1])}
           r={i === pts.length - 1 ? 3.2 : 2}
-          fill={BLUE}
-          stroke="#0b1220"
+          fill={ACCENT}
+          stroke={CARD}
           strokeWidth={1}
         >
           <title>

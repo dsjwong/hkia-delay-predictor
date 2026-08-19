@@ -30,7 +30,7 @@ export function Tooltip({
           role="tooltip"
           id={id}
           className={cn(
-            'pointer-events-none absolute left-1/2 z-40 w-max max-w-[280px] -translate-x-1/2 rounded-md border border-border bg-surface-3 px-2.5 py-1.5 text-xs text-ink shadow-lg',
+            'pointer-events-none absolute left-1/2 z-40 w-max max-w-[300px] -translate-x-1/2 rounded-md border border-border bg-elev px-2.5 py-1.5 text-xs leading-relaxed text-ink shadow-[0_8px_24px_rgba(0,0,0,0.4)]',
             side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
           )}
         >
