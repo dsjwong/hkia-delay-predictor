@@ -22,7 +22,12 @@ from .db import connect
 
 log = logging.getLogger("hkia.flights")
 URL = "https://www.hongkongairport.com/flightinfo-rest/rest/flights/past"
-HEADERS = {"User-Agent": "hkia-delay-predictor/0.1 (+https://github.com/dsjwong/hkia-delay-predictor)"}
+HEADERS = {
+    "User-Agent": "hkia-delay-predictor/0.1 (+https://github.com/dsjwong/hkia-delay-predictor)",
+    # The endpoint sits behind a CDN; GitHub runners were served responses hours stale (2026-08-19).
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
 HKT = dt.timezone(dt.timedelta(hours=8))
 BACKFILL_DAYS = 91  # empirically: date=today-91 -> 200, today-92 -> 400 (see docs/M0-data-recon.md)
 
@@ -31,8 +36,9 @@ _TIME_RE = re.compile(r"^(Dep|Est at)\s+(\d\d:\d\d)(?:\s+\((\d\d)/(\d\d)/(\d{4})
 
 def fetch_day(date: dt.date, session: requests.Session | None = None) -> list[dict]:
     s = session or requests
-    r = s.get(URL, params={"date": date.isoformat(), "lang": "en", "cargo": "false", "arrival": "false"},
-              headers=HEADERS, timeout=60)
+    params = {"date": date.isoformat(), "lang": "en", "cargo": "false", "arrival": "false",
+              "_": str(int(time.time()))}  # cache-buster: defeat stale CDN edges
+    r = s.get(URL, params=params, headers=HEADERS, timeout=60)
     if r.status_code == 400:  # outside the served window
         return []
     r.raise_for_status()
