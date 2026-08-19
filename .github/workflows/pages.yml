@@ -35,6 +35,10 @@ jobs:
       - run: npm run lint
       - run: npm test -- --run
       - run: npm run build
+        env:
+          # optional: URL of your own CORS relay for the adsb.lol feed (web/worker/adsb-proxy.js on Cloudflare Workers);
+          # Settings -> Secrets and variables -> Actions -> Variables -> ADSB_PROXY_URL. Empty = public-proxy fallback (slow).
+          VITE_ADSB_URL: ${{ vars.ADSB_PROXY_URL }}
       - name: Smoke — built index.html has the app root
         run: grep -q 'id="root"' dist/index.html && test -f dist/data/meta.json
       - uses: actions/configure-pages@v5

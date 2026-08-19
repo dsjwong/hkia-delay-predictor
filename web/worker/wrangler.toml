@@ -1,0 +1,6 @@
+# Cloudflare Worker relay for the live map (optional, free). One-time:
+#   cd web/worker && npx wrangler login && npx wrangler deploy
+# then set the repository variable ADSB_PROXY_URL to the printed https://hkia-adsb-proxy.<you>.workers.dev/ and re-run pages.yml.
+name = "hkia-adsb-proxy"
+main = "adsb-proxy.js"
+compatibility_date = "2026-01-01"
