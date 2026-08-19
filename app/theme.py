@@ -88,11 +88,11 @@ def register_template() -> None:
     t = go.layout.Template(pio.templates["plotly_dark"])
     axis_font = dict(size=11, color=INK_2)
     t.layout.update(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor=SURFACE_2, plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family=FONT, size=12, color=INK_2),
         title=dict(font=dict(family=FONT, size=13, color=INK, weight=500), x=0, xanchor="left", yref="container", y=0.985, yanchor="top"),
         colorway=CATEGORICAL,
-        margin=dict(l=8, r=8, t=64, b=8),
+        margin=dict(l=16, r=16, t=64, b=16),
         hoverlabel=dict(bgcolor=SURFACE_3, bordercolor=BORDER_2, font=dict(family=FONT, size=12, color=INK)),
         legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(size=11, color=INK_2),
                     itemsizing="constant"),
@@ -203,8 +203,7 @@ div[data-testid="stExpander"] details {{ border: 1px solid {BORDER}; border-radi
 div[data-testid="stExpander"] summary p {{ font-size: 0.86rem; font-weight: 500; color: {INK_2}; }}
 div[data-testid="stDataFrame"] {{ border: 1px solid {BORDER}; border-radius: {RADIUS}px; overflow: hidden; }}
 div[data-testid="stAlert"] {{ border-radius: {RADIUS}px; }}
-div[data-testid="stPlotlyChart"] {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px; padding: 8px 8px 4px 8px; }}
-div[data-testid="stPlotlyChart"] .js-plotly-plot, div[data-testid="stPlotlyChart"] .plot-container {{ overflow: visible; }}
+div[data-testid="stPlotlyChart"] {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px; overflow: hidden; }}
 div[data-testid="stDeckGlJsonChart"] {{ border: 1px solid {BORDER}; border-radius: {RADIUS}px; overflow: hidden; }}
 div[data-testid="stDeckGlJsonChart"] canvas {{ border-radius: {RADIUS}px; }}
 /* progress bars in tables pick up the accent */
