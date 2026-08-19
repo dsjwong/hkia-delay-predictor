@@ -9,6 +9,7 @@ export default defineConfig({
   base: '/hkia-delay-predictor/',
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  worker: { format: 'es' }, // maplibre's worker is an ES module (imports maplibre-gl-shared)
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 900,

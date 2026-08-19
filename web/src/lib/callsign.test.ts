@@ -40,7 +40,14 @@ describe('matchFlight', () => {
   const pool = [
     f({}),
     f({ flight_no: 'CX 261', sched_ts: '2026-08-18T09:30:00Z', actual_ts: '2026-08-18T09:40:00Z' }), // yesterday's leg, too old
-    f({ flight_no: 'UO 700', airline: 'HKE', status: 'scheduled', actual_ts: null, sched_ts: '2026-08-19T10:20:00Z', p: null }),
+    f({
+      flight_no: 'UO 700',
+      airline: 'HKE',
+      status: 'scheduled',
+      actual_ts: null,
+      sched_ts: '2026-08-19T10:20:00Z',
+      p: null,
+    }),
     f({ flight_no: 'HX 1', airline: 'CRK', status: 'cancelled', actual_ts: null }),
   ]
   const idx = buildIndex(pool, I2I)

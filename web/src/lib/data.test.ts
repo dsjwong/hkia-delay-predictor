@@ -20,7 +20,10 @@ describe('fetchJson', () => {
 })
 
 describe('labels', () => {
-  const meta = { airlines: { CPA: 'Cathay Pacific' }, airports: { CDG: { city: 'Paris CDG', country: 'France' }, XYZ: { city: 'XYZ', country: '' } } } as unknown as Meta
+  const meta = {
+    airlines: { CPA: 'Cathay Pacific' },
+    airports: { CDG: { city: 'Paris CDG', country: 'France' }, XYZ: { city: 'XYZ', country: '' } },
+  } as unknown as Meta
   it('fall back to the code when unknown', () => {
     expect(airlineName(meta, 'CPA')).toBe('Cathay Pacific')
     expect(airlineName(meta, 'ZZZ')).toBe('ZZZ')

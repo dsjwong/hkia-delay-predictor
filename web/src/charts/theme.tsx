@@ -1,14 +1,29 @@
 import type { ReactNode } from 'react'
 import { GRID, INK, INK_2, MUTED, SURFACE_3 } from './tokens'
 
-export const AXIS = { stroke: GRID, tick: { fill: MUTED, fontSize: 11 }, tickLine: false as const, axisLine: { stroke: GRID } }
+export const AXIS = {
+  stroke: GRID,
+  tick: { fill: MUTED, fontSize: 11 },
+  tickLine: false as const,
+  axisLine: { stroke: GRID },
+}
 export const GRID_PROPS = { stroke: GRID, strokeDasharray: undefined, vertical: false }
 export const CURSOR = { fill: 'rgba(255,255,255,0.04)' }
 
 /** Shared tooltip card for every Recharts chart (same chrome as the map tooltip). */
 export function TipBox({ title, rows }: { title?: ReactNode; rows: [ReactNode, ReactNode][] }) {
   return (
-    <div style={{ background: SURFACE_3, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 9px', color: INK, fontSize: 12, lineHeight: 1.45 }}>
+    <div
+      style={{
+        background: SURFACE_3,
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 6,
+        padding: '6px 9px',
+        color: INK,
+        fontSize: 12,
+        lineHeight: 1.45,
+      }}
+    >
       {title && <div style={{ fontWeight: 600, marginBottom: 2 }}>{title}</div>}
       {rows.map(([k, v], i) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>

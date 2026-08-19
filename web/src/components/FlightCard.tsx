@@ -22,9 +22,17 @@ export function statusBadge(f: Flight) {
 }
 
 /** Flight details: prediction, schedule vs actual, destination, prediction history sparkline, and (on the live map) the aircraft. */
-export function FlightCard({ flight: f, meta, aircraft }: { flight: Flight; meta: Meta | null; aircraft?: Aircraft | null }) {
+export function FlightCard({
+  flight: f,
+  meta,
+  aircraft,
+}: {
+  flight: Flight
+  meta: Meta | null
+  aircraft?: Aircraft | null
+}) {
   const a = meta?.airports[f.dest]
-  const hit = f.delay_min != null && f.p != null ? (f.p >= 0.5) === (f.delay_min > 15) : null
+  const hit = f.delay_min != null && f.p != null ? f.p >= 0.5 === f.delay_min > 15 : null
   return (
     <div className="space-y-4">
       <div>
@@ -45,7 +53,9 @@ export function FlightCard({ flight: f, meta, aircraft }: { flight: Flight; meta
           Prediction
         </h4>
         {f.p == null ? (
-          <div className="text-sm text-muted">Not scored yet — the cron scores not-yet-departed flights every 30 min.</div>
+          <div className="text-sm text-muted">
+            Not scored yet — the cron scores not-yet-departed flights every 30 min.
+          </div>
         ) : (
           <div className="hk-card px-3 py-2.5 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -77,7 +87,9 @@ export function FlightCard({ flight: f, meta, aircraft }: { flight: Flight; meta
         )}
         {f.history && f.history.length > 1 && (
           <div className="mt-2">
-            <div className="text-xs text-muted mb-1">How the score moved through the day (each cron run that changed it)</div>
+            <div className="text-xs text-muted mb-1">
+              How the score moved through the day (each cron run that changed it)
+            </div>
             <Sparkline history={f.history} />
           </div>
         )}
@@ -102,13 +114,16 @@ export function FlightCard({ flight: f, meta, aircraft }: { flight: Flight; meta
           <Row k="callsign" v={aircraft.callsign || '—'} />
           <Row k="registration / type" v={`${aircraft.reg || '—'} / ${aircraft.type || '—'}`} />
           <Row k="altitude" v={aircraft.onGround ? 'on ground' : `${num(aircraft.altFt)} ft`} />
-          <Row k="ground speed / track" v={`${aircraft.gsKt == null ? '—' : Math.round(aircraft.gsKt) + ' kt'} / ${aircraft.trackDeg == null ? '—' : Math.round(aircraft.trackDeg) + '°'}`} />
+          <Row
+            k="ground speed / track"
+            v={`${aircraft.gsKt == null ? '—' : Math.round(aircraft.gsKt) + ' kt'} / ${aircraft.trackDeg == null ? '—' : Math.round(aircraft.trackDeg) + '°'}`}
+          />
           <Row k="distance from HKIA" v={`${aircraft.distNm.toFixed(0)} nm`} />
         </section>
       )}
       <p className="text-[0.7rem] text-muted">
-        P is a probability, not a verdict: 30 % means roughly 3 in 10 such flights leave more than 15 min late. Weather used for
-        future flights = latest METAR (persistence), not a forecast.
+        P is a probability, not a verdict: 30 % means roughly 3 in 10 such flights leave more than 15 min late. Weather
+        used for future flights = latest METAR (persistence), not a forecast.
       </p>
     </div>
   )

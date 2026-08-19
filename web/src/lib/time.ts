@@ -2,9 +2,28 @@
 export const HKT = 'Asia/Hong_Kong'
 
 const fmtHM = new Intl.DateTimeFormat('en-GB', { timeZone: HKT, hour: '2-digit', minute: '2-digit', hour12: false })
-const fmtHMS = new Intl.DateTimeFormat('en-GB', { timeZone: HKT, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
-const fmtDate = new Intl.DateTimeFormat('en-GB', { timeZone: HKT, weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
-const fmtDT = new Intl.DateTimeFormat('en-GB', { timeZone: HKT, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+const fmtHMS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: HKT,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+})
+const fmtDate = new Intl.DateTimeFormat('en-GB', {
+  timeZone: HKT,
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+})
+const fmtDT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: HKT,
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
 
 export function toDate(ts: string | number | null | undefined): Date | null {
   if (ts == null) return null
@@ -50,7 +69,9 @@ export function pct(x: number | null | undefined, digits = 0): string {
   return x == null || Number.isNaN(x) ? '—' : (x * 100).toFixed(digits) + ' %'
 }
 export function num(x: number | null | undefined, digits = 0): string {
-  return x == null || Number.isNaN(x) ? '—' : x.toLocaleString('en-US', { maximumFractionDigits: digits, minimumFractionDigits: digits })
+  return x == null || Number.isNaN(x)
+    ? '—'
+    : x.toLocaleString('en-US', { maximumFractionDigits: digits, minimumFractionDigits: digits })
 }
 export function signed(x: number | null | undefined, digits = 0): string {
   if (x == null || Number.isNaN(x)) return '—'

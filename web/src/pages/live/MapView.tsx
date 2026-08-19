@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
+// maplibre-gl >= 6 is ESM-only and resolves its tile-parsing worker with `new URL('./maplibre-gl-worker.mjs', import.meta.url)`,
+// which does not survive bundling (the file is not emitted next to the chunk, so tiles never load and the map stays blank).
+// Let Vite bundle the worker as its own entry and hand maplibre the resulting URL.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { MapboxOverlay } from '@deck.gl/mapbox'
 import { IconLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import type { PickingInfo } from '@deck.gl/core'
@@ -11,6 +15,7 @@ import { PLANE_ATLAS, PLANE_MAPPING } from './plane-icon'
 import type { TrackedAircraft } from './match'
 
 export const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+maplibregl.setWorkerUrl(maplibreWorkerUrl)
 
 interface Props {
   aircraft: TrackedAircraft[]
@@ -66,7 +71,13 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
         info.object && (info.object as Plotted).callsign !== undefined
           ? {
               html: `<div style="font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.45">${tooltipHtml(info.object as Plotted)}</div>`,
-              style: { backgroundColor: '#182438', color: '#e6ebf2', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 8px' },
+              style: {
+                backgroundColor: '#182438',
+                color: '#e6ebf2',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '6px',
+                padding: '6px 8px',
+              },
             }
           : null,
       onClick: (info: PickingInfo) => {
@@ -101,11 +112,11 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
     })
     const label = new TextLayer({
       id: 'hkia-label',
-      data: [{ pos: [HKIA.lon, HKIA.lat - 0.035], txt: 'VHHH  HKIA  RWY 07L/25R 07R/25L' }],
+      data: [{ pos: [HKIA.lon, HKIA.lat - 0.07], txt: 'VHHH  HKIA  RWY 07L/25R 07R/25L' }],
       getPosition: (d: { pos: [number, number] }) => d.pos,
       getText: (d: { txt: string }) => d.txt,
       getColor: [180, 189, 204, 255],
-      getSize: 12,
+      getSize: 11,
       getAlignmentBaseline: 'top',
       fontFamily: 'Menlo, Consolas, monospace',
       pickable: false,
@@ -119,7 +130,11 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
       last = t
       const now = Date.now()
       const plotted: Plotted[] = data.current.map((a) => {
-        const p = deadReckon({ lat: a.lat, lon: a.lon, gsKt: a.onGround ? 0 : a.gsKt, trackDeg: a.trackDeg, t: a.posAt }, (now - a.posAt) / 1000, 90)
+        const p = deadReckon(
+          { lat: a.lat, lon: a.lon, gsKt: a.onGround ? 0 : a.gsKt, trackDeg: a.trackDeg, t: a.posAt },
+          (now - a.posAt) / 1000,
+          90,
+        )
         let color: [number, number, number, number]
         let size: number
         if (a.flight && a.flight.p != null) {
@@ -193,7 +208,7 @@ export function MapView({ aircraft, selectedHex, onSelect, className }: Props) {
   // maplibre's own CSS sets .maplibregl-map { position: relative }, so the sized box is the wrapper, not the map element
   return (
     <div className={className} role="region" aria-label="Live aircraft map around HKIA">
-      <div ref={el} style={{ position: "absolute", inset: 0 }} />
+      <div ref={el} style={{ position: 'absolute', inset: 0 }} />
     </div>
   )
 }

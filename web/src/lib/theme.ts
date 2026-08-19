@@ -34,7 +34,11 @@ export function rampRgb(ramp: string[], t: number | null | undefined): [number, 
   const f = pos - i
   const a = hex2rgb(ramp[i])
   const b = hex2rgb(ramp[i + 1])
-  return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)]
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * f),
+    Math.round(a[1] + (b[1] - a[1]) * f),
+    Math.round(a[2] + (b[2] - a[2]) * f),
+  ]
 }
 
 export function rampHex(ramp: string[], t: number | null | undefined): string {
@@ -52,5 +56,10 @@ export function altGrey(altFt: number, onGround: boolean): [number, number, numb
   const f = Math.min(Math.max(altFt, 0), 40000) / 40000
   const lo = [120, 130, 150]
   const hi = [236, 240, 246]
-  return [Math.round(lo[0] + (hi[0] - lo[0]) * f), Math.round(lo[1] + (hi[1] - lo[1]) * f), Math.round(lo[2] + (hi[2] - lo[2]) * f), 230]
+  return [
+    Math.round(lo[0] + (hi[0] - lo[0]) * f),
+    Math.round(lo[1] + (hi[1] - lo[1]) * f),
+    Math.round(lo[2] + (hi[2] - lo[2]) * f),
+    230,
+  ]
 }
