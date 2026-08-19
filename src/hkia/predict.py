@@ -7,8 +7,11 @@ Usage:
 
 Pipeline: models/ (xgb_delayed15 + xgb_delay_min + MANIFEST.json, written by hkia.train) -> the SAME feature builder as
 training (`hkia.features.build_features` over the whole flights table, so congestion + point-in-time rolling delay
-features see all history) -> rows appended to table `predictions` (history is kept: one row per flight per run whose
-feature vector changed, so `hkia.evaluate` can compare the last score before departure with the actual).
+features see all history) -> rows written to table `predictions`. Retention per flight (see `write_predictions`):
+the FIRST score, the LATEST score, and at most one score per clock hour (UTC) in between -- a new score replaces the
+previous row from the same hour unless that row is the first. A new score that moves |p_delay15| < 0.01 AND
+|pred_delay_min| < 1 vs the latest stored row is not stored at all. `hkia.evaluate` still takes the last stored score
+before departure; `hkia.compact_predictions` applies the same hourly rule retroactively (idempotent, run daily).
 
 Weather for flights in the future: the as-of join has nothing after "now", so those rows get the LATEST METAR observation
 (persistence forecast; `metar_age_min` capped at the training tolerance of 180 min). Limitation, not a forecast — TAF is a
@@ -49,8 +52,10 @@ CREATE TABLE IF NOT EXISTS predictions (
     scored_at      TEXT NOT NULL,   -- UTC ISO
     PRIMARY KEY (date, flight_no, scheduled_ts, scored_at)
 );
-CREATE INDEX IF NOT EXISTS ix_pred_flight ON predictions (date, flight_no, scheduled_ts, scored_at);
 """
+# (the former ix_pred_flight index duplicated the primary-key autoindex column for column; dropped by hkia.compact_predictions)
+MIN_DELTA_P = 0.01      # a new score is stored only if it moves p_delay15 by >= this ...
+MIN_DELTA_MIN = 1.0     # ... or pred_delay_min by >= this (minutes), relative to the latest stored row
 
 
 def load_models(models_dir: Path = MODELS_DIR) -> dict:
@@ -111,23 +116,61 @@ def score(conn, models: dict, dates: list[str], include_departed: bool = False,
     return tgt
 
 
+def hour_key(scored_at: str) -> str:
+    """Clock-hour bucket of a UTC ISO timestamp ('2026-08-17T10:18:03+00:00' -> '2026-08-17T10')."""
+    return scored_at[:13]
+
+
+def decide(first_ts: str | None, latest: tuple | None, p: float, pred_min: float, features_hash: str,
+           scored_at: str) -> str:
+    """Retention rule for one new score. `latest` = (scored_at, p_delay15, pred_delay_min, features_hash) of the
+    latest stored row or None. Returns 'insert', 'replace' (delete the latest row, then insert) or 'skip'."""
+    if latest is None:
+        return "insert"
+    l_ts, l_p, l_min, l_hash = latest
+    if l_hash == features_hash:
+        return "skip"                                            # feature vector unchanged -> same score
+    if abs(p - l_p) < MIN_DELTA_P and abs(pred_min - l_min) < MIN_DELTA_MIN:
+        return "skip"                                            # moved too little to be worth a row
+    if l_ts != first_ts and hour_key(l_ts) == hour_key(scored_at):
+        return "replace"                                         # one row per clock hour, first row is protected
+    return "insert"
+
+
+def _state(conn, dates: list[str]) -> dict:
+    """(date, flight_no, scheduled_ts) -> (first_scored_at, latest_row) for every flight of `dates` with a prediction."""
+    q = f"""
+    SELECT date, flight_no, scheduled_ts, scored_at, p_delay15, pred_delay_min, features_hash,
+           MIN(scored_at) OVER w AS first_ts,
+           ROW_NUMBER() OVER (w ORDER BY scored_at DESC) AS rn
+    FROM predictions WHERE date IN ({",".join("?" * len(dates))})
+    WINDOW w AS (PARTITION BY date, flight_no, scheduled_ts)
+    """
+    return {(d, f, s): (first, (ts, p, m, h)) for d, f, s, ts, p, m, h, first, rn in conn.execute(q, dates) if rn == 1}
+
+
 def write_predictions(conn, tgt: pd.DataFrame, version: str, now: dt.datetime, dedupe: bool = True) -> int:
+    """Apply `decide` to every scored flight. Returns the number of rows written (inserted or replaced).
+    dedupe=False appends every score unconditionally (debugging only)."""
     conn.executescript(PRED_SCHEMA)
     scored_at = now.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
-    rows = []
-    last = {}
-    if dedupe:
-        cur = conn.execute("SELECT date, flight_no, scheduled_ts, features_hash FROM predictions p WHERE scored_at = "
-                           "(SELECT MAX(scored_at) FROM predictions q WHERE q.date=p.date AND q.flight_no=p.flight_no "
-                           "AND q.scheduled_ts=p.scheduled_ts)")
-        last = {(d, f, s): h for d, f, s, h in cur}
+    dates = sorted(set(tgt["date"])) if len(tgt) else []
+    state = _state(conn, dates) if (dedupe and dates) else {}
+    rows, drop = [], []
     for r in tgt.itertuples(index=False):
         sched = r.scheduled_ts.tz_convert(HKT).isoformat()
-        if last.get((r.date, r.flight_no, sched)) == r.features_hash:
+        p, m = float(r.p_delay15), float(r.pred_delay_min)
+        first_ts, latest = state.get((r.date, r.flight_no, sched), (None, None))
+        action = decide(first_ts, latest, p, m, r.features_hash, scored_at) if dedupe else "insert"
+        if action == "skip":
             continue
-        rows.append((r.date, r.flight_no, sched, float(r.p_delay15), float(r.pred_delay_min), version, r.features_hash, scored_at))
+        if action == "replace":
+            drop.append((r.date, r.flight_no, sched, latest[0]))
+        rows.append((r.date, r.flight_no, sched, p, m, version, r.features_hash, scored_at))
+    conn.executemany("DELETE FROM predictions WHERE date=? AND flight_no=? AND scheduled_ts=? AND scored_at=?", drop)
     conn.executemany("INSERT OR REPLACE INTO predictions VALUES (?,?,?,?,?,?,?,?)", rows)
-    conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (scored_at, "predict", f"{len(tgt)} scored, {len(rows)} written, {version}"))
+    conn.execute("INSERT INTO ingest_log VALUES (?,?,?)",
+                 (scored_at, "predict", f"{len(tgt)} scored, {len(rows)} written ({len(drop)} replaced same-hour rows), {version}"))
     conn.commit()
     return len(rows)
 
@@ -136,7 +179,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--date", action="append", help="YYYY-MM-DD (repeatable); default today + tomorrow HKT")
     ap.add_argument("--include-departed", action="store_true")
-    ap.add_argument("--no-dedupe", action="store_true", help="append even if the feature vector is unchanged")
+    ap.add_argument("--no-dedupe", action="store_true", help="append every score unconditionally (debugging)")
     ap.add_argument("--models", default=str(MODELS_DIR))
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
