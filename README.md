@@ -39,7 +39,7 @@ The committed `data/hkia.db` carries the live tables, the weather backfill table
 | `GET /weather/latest` | latest METAR + latest HKO current readings and warnings |
 
 ### Dashboard (`streamlit run app/streamlit_app.py`)
-Five pages in a neutral zinc-dark design system (shadcn/ui-style tokens, Inter, one amber accent for P(delay) — see [`docs/design.md`](docs/design.md)), HKT everywhere, "data as of" (last ingest) in the title row and sidebar; reads `data/hkia.db` + `models/` + `reports/` directly, never scores. Code: `app/streamlit_app.py` (shell), `app/theme.py` (palette, CSS, shared plotly template), `app/charts.py`, `app/live_map.py`, `app/page_*.py`.
+Six pages in a neutral zinc-dark design system (shadcn/ui-style tokens, Inter, one amber accent for P(delay) — see [`docs/design.md`](docs/design.md)), HKT everywhere, "data as of" (last ingest) in the title row and sidebar; reads `data/hkia.db` + `models/` + `reports/` directly, never scores. Code: `app/streamlit_app.py` (shell), `app/theme.py` (palette, CSS, shared plotly template), `app/charts.py`, `app/live_map.py`, `app/page_*.py`.
 
 | page | shows |
 |---|---|
@@ -47,6 +47,7 @@ Five pages in a neutral zinc-dark design system (shadcn/ui-style tokens, Inter, 
 | Today | date picker (today / tomorrow / back 90 days), metric tiles (flights, predicted share > 15 min late, observed so far, METAR, HKO warnings / TC signal), timeline strip of every scored flight (scheduled time × P, departed vs pending), predicted-vs-observed late share by hour, filterable table (airline, hour range, not-yet-departed) with P(delay > 15) as a progress bar, predicted minutes and — for departed flights — actual delay and a hit/miss mark |
 | Patterns | 91-day history: hour × weekday heatmap (mean delay or % > 15), ranked bars for airlines (share > 15, n ≥ 50, top 15) and top destinations (mean delay), small multiples of delay by hour for the top 4 airlines, typhoon-days callout, mean delay per day with TC-signal days highlighted; full tables in an expander |
 | Model | leads with the **live report card** — AUC / Brier / MAE tiles with the signed delta against the airline × hour baseline, AUC per day (model vs baseline, partial days flagged), AUC by forecast horizon, calibration on live data, and the notable flights of the week (most confident correct calls, biggest misses in both directions, plus the honest record of *every* high-probability call) — then the M2 held-out test metrics, reliability diagram, gain feature importance, ablation, the full live metric table and limitations |
+| Case study | Typhoon Noul, 24–26 Jul 2026, hour by hour: headline tiles, mean delay per hour with the TC signal as a labelled background band (one y-axis), wind and cancellations in their own panels, totals per signal level against the no-signal baseline, the ten longest delays, and an **in-sample** model retrospective flagged as such in the UI |
 | About | 10-line architecture, data sources, repo, author |
 
 Palette (validated with the dataviz skill's `validate_palette.js` on the `#09090b` surface): categorical `#c9820c #3d87e0 #14a88d #9b6fe0` (adjacent pairs PASS, worst CVD ΔE 14.0; first three all-pairs PASS), P(delay) amber ramp `#6b4608 → #ffbf3d` (ordinal PASS), heatmap zinc ramp `#45454c → #ececef` (PASS); status colours reserved for badges. Amber = the model's prediction, zinc = observed / other.
@@ -59,10 +60,11 @@ Live map data: community ADS-B feeds (adsb.lol, OpenSky, adsb.fi, airplanes.live
 ![Today](docs/img/dashboard-today.jpg)
 ![Patterns](docs/img/dashboard-patterns.jpg)
 ![Model](docs/img/dashboard-model.jpg)
+![Case study](docs/img/dashboard-typhoon.jpg)
 
 ## Web app (GitHub Pages) — https://dsjwong.github.io/hkia-delay-predictor/
 A static React app in `web/` (Vite + React 19 + TypeScript + Tailwind 4, shadcn-style primitives, Inter, MapLibre GL + deck.gl, Recharts),
-hosted on GitHub Pages with **no backend**: the same five pages as the Streamlit dashboard (Live map · Today · Patterns · Model · About — the
+hosted on GitHub Pages with **no backend**: the same six pages as the Streamlit dashboard (Live map · Today · Patterns · Model · Case study · About — the
 Model route leads with the live report card, and the Live map header carries a chip with the current live margin that links to it) in a
 neutral zinc dark design system — amber reserved for P(delay > 15), floating glass panels over a full-height live map, KPI tiles + card grids
 elsewhere — hash-routed, mobile-responsive (bottom tabs), keyboard-accessible, skeleton/empty states and tooltips everywhere. Tokens, type
@@ -74,7 +76,8 @@ scale, colour meaning and the library decision: [`docs/design.md`](docs/design.m
 heatmap, airline/destination tables, daily series with TC-signal flags, typhoon stats), `model.json` (M2 metrics, calibration bins, feature
 importance, ablation, the whole live report card under `live_eval` — headline metrics, coverage, bootstrap CIs, daily series,
 forecast-horizon buckets, live calibration, notable flights — interpretation, limitations; 12 KB), `weather.json` (latest METAR, HKO warnings, TC signal) — and commits
-them with the DB. The deployed page fetches those files straight from `raw.githubusercontent.com/…/main/web/public/data/` (CORS `*`, 5-min CDN
+them with the DB. One file in that directory is **not** cron output: `case_noul.json` (46 KB) is static history written once by
+`python -m hkia.case_study` and committed by hand. The deployed page fetches those files straight from `raw.githubusercontent.com/…/main/web/public/data/` (CORS `*`, 5-min CDN
 cache), so **fresh data needs no rebuild**; the copy bundled into the Pages artifact under `/data/` is the offline fallback. `pages.yml` rebuilds
 and deploys only when `web/**` changes in a human push (bot pushes with `GITHUB_TOKEN` never trigger workflows — by design here).
 
@@ -98,6 +101,21 @@ one-time setup: [`docs/deploy.md`](docs/deploy.md).
 ![Web app — today](docs/img/web-today.jpg)
 ![Web app — patterns](docs/img/web-patterns.jpg)
 ![Web app — model](docs/img/web-model.jpg)
+![Web app — case study](docs/img/web-typhoon.jpg)
+
+## Case study: Typhoon Noul
+
+The one time this dataset contains a real stress test: HKIA hour by hour as HKO walked the signal up **T1→T3→T8→T9→T8→T3→T1** on
+24–26 Jul 2026, when **216 of 1,366** scheduled departures were cancelled (15.8 %), the worst hour averaged **267 min** of delay, and
+hourly delay took **7 hours** after the all-clear to come back to the 15.9-min no-signal baseline. The page is honest about what it is:
+live scoring only began 2026-08-17, so **no prediction was ever published for these flights** — the model half is a retrospective
+re-score that is **in-sample** (24–26 Jul sits in the validation split), flagged as such in the UI, and it shows the model ranking these
+flights well (AUC 0.77) while badly under-calling the magnitude (28 min predicted against 123 min observed under signal 8).
+Read it at [/typhoon](https://dsjwong.github.io/hkia-delay-predictor/#/typhoon) (or the dashboard's **Case study** page);
+the analysis is [`src/hkia/case_study.py`](src/hkia/case_study.py) → [`reports/case-noul.md`](reports/case-noul.md) +
+`web/public/data/case_noul.json`, a one-off artefact regenerated by hand with `python -m hkia.case_study`, never by the cron.
+
+![Mean departure delay by hour with the typhoon signal behind it](docs/img/case-noul.png)
 
 ## Why this prediction — per-flight explanations
 Every scored flight that has not left yet carries the **three features that moved its P(delay > 15) the most**, in both apps' flight
