@@ -75,3 +75,20 @@ scoring ahead of time: (1) rows scheduled after "now" get the latest METAR obser
 `metar_age_min` capped at 180; (2) the rolling delay features only see flights that have already departed as of scoring time, which for a
 flight several hours out is fewer than the training-time cutoff of scheduled − 2 h. Predictions are appended to `predictions`
 (`features_hash` = md5 of the feature vector; a flight is re-scored only when it changes) and evaluated by `hkia.evaluate`.
+
+## Per-flight explanations (`hkia.explain`)
+The same scoring pass asks the booster for local SHAP values (`Booster.predict(..., pred_contribs=True)`, one contribution per feature
+plus a bias term, in log-odds, summing exactly to the margin) and keeps the **top 3 by |contribution|** for each flight.
+
+- **Units.** The apps show probability points, linearised at the flight's own prediction: `pp = 100 · c · p · (1 − p)`. First-order
+  approximation — the three numbers do not add up to `p − p_base`; the exact log-odds value is stored and is what the ranking uses.
+- **Text.** One hand-written template per feature in `hkia.explain.TEMPLATES` (every name in the table above has one; a missing value
+  gets its own line from `MISSING`, e.g. `ceiling_ft` → "no cloud ceiling reported"). `tests/test_explain.py` asserts the coverage
+  against this file, so a new feature must arrive with its template.
+- **Storage.** Table `explanations` — `PRIMARY KEY (date, flight_no, scheduled_ts)`, i.e. **the latest score only**, `INSERT OR
+  REPLACE`d on every re-score and pruned to `today − 1 … tomorrow` (`hkia.explain.KEEP_DAYS`). It stores `[[feature, value,
+  logodds], …]`, not the rendered sentence, so editing a template changes what the apps show without re-scoring anything.
+- **Publication.** `hkia.export_json` renders the templates and adds `"why": [[direction, one-liner, pp], …]` to each **not-yet-departed**
+  flight of `departures_*.json` (direction is `+1` when the feature pushed P up). Older snapshots simply have no `why` key; both
+  frontends render an empty state.
+- **What it is not.** A SHAP value describes this model's output, not the world: it is not a causal effect and not a what-if.
