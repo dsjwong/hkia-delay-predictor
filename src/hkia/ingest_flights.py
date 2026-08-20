@@ -34,9 +34,10 @@ BACKFILL_DAYS = 91  # empirically: date=today-91 -> 200, today-92 -> 400 (see do
 _TIME_RE = re.compile(r"^(Dep|Est at)\s+(\d\d:\d\d)(?:\s+\((\d\d)/(\d\d)/(\d{4})\))?$")
 
 
-def fetch_day(date: dt.date, session: requests.Session | None = None) -> list[dict]:
+def fetch_day(date: dt.date, session: requests.Session | None = None, arrival: bool = False) -> list[dict]:
+    """One day-payload from the AAHK endpoint. `arrival=True` serves the arrivals side (see hkia.ingest_arrivals)."""
     s = session or requests
-    params = {"date": date.isoformat(), "lang": "en", "cargo": "false", "arrival": "false",
+    params = {"date": date.isoformat(), "lang": "en", "cargo": "false", "arrival": "true" if arrival else "false",
               "_": str(int(time.time()))}  # cache-buster: defeat stale CDN edges
     r = s.get(URL, params=params, headers=HEADERS, timeout=60)
     if r.status_code == 400:  # outside the served window
