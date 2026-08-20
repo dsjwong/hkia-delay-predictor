@@ -20,6 +20,7 @@ import type { LeadBucket, LiveDailyRow } from '@/lib/types'
 
 const f3 = (x: number | null | undefined) => (x == null ? '—' : x.toFixed(3))
 const COIN_FLIP = { model: 'model (XGBoost, live)', baseline: 'airline × hour baseline' }
+const nf = (x: number | null | undefined) => (x == null ? 'no value' : x.toFixed(3))
 
 /** Y range on round tenths that always keeps 0.5 in view but does not squash a 0.58 → 0.71 spread into nothing. */
 function aucAxis(values: (number | null | undefined)[]): { domain: [number, number]; ticks: number[] } {
@@ -37,6 +38,7 @@ export function DailyAuc({ rows }: { rows: LiveDailyRow[] }) {
     date: r.date,
     n: r.n,
     thin: r.thin,
+    partial: !!r.partial,
     rate: r.delayed15_rate,
     model: r.model.auc,
     baseline: r.baseline?.auc ?? null,
@@ -44,8 +46,16 @@ export function DailyAuc({ rows }: { rows: LiveDailyRow[] }) {
   }))
   const hasBaseline = data.some((d) => d.baseline != null)
   const axis = aucAxis(data.flatMap((d) => [d.model, d.baseline]))
+  const partials = data.filter((d) => d.partial).map((d) => d.date.slice(5))
   return (
-    <div>
+    <div
+      role="img"
+      aria-label={`Daily AUC, model versus airline by hour baseline. ${data
+        .map(
+          (d) => `${d.date}: model ${nf(d.model)}${hasBaseline ? `, baseline ${nf(d.baseline)}` : ''}, ${d.n} flights`,
+        )
+        .join('; ')}.`}
+    >
       <Legend
         items={[
           { color: SERIES_1, label: COIN_FLIP.model, shape: 'line' },
@@ -77,7 +87,7 @@ export function DailyAuc({ rows }: { rows: LiveDailyRow[] }) {
                     ['model AUC', f3(r.model)],
                     ...(hasBaseline ? ([['baseline AUC', f3(r.baseline)]] as [string, string][]) : []),
                     ['model MAE', r.mae == null ? '—' : `${num(r.mae, 1)} min`],
-                    ['flights', `${num(r.n)}${r.thin ? ' (thin)' : ''}`],
+                    ['flights', `${num(r.n)}${r.thin ? ' (thin)' : ''}${r.partial ? ' (partial day)' : ''}`],
                     ['were > 15 min late', r.rate == null ? '—' : `${Math.round(r.rate * 100)} %`],
                   ]}
                 />
@@ -106,25 +116,40 @@ export function DailyAuc({ rows }: { rows: LiveDailyRow[] }) {
           )}
         </LineChart>
       </ResponsiveContainer>
+      {partials.length > 0 && (
+        <p className="text-[0.7rem] text-muted mt-1 leading-relaxed">
+          {partials.join(' and ')} {partials.length > 1 ? 'are' : 'is'} a partial day — the rolling window starts and
+          ends part-way through a date, so those points cover fewer flights than a full day.
+        </p>
+      )}
     </div>
   )
 }
 
-/** AUC by how far ahead of departure the last score was written. Bars from 0 with the coin-flip line marked. */
-export function LeadBucketBars({ rows }: { rows: LeadBucket[] }) {
+/** AUC by forecast horizon (scheduled − scored). Bars from 0 with the coin-flip line marked; thin buckets are hatched
+ *  rather than dropped, so a bar standing on 12 flights cannot be mistaken for a result. */
+export function LeadBucketBars({ rows, thinAt }: { rows: LeadBucket[]; thinAt?: number }) {
   const data = rows.map((r) => ({
     label: r.label,
     n: r.n,
     thin: r.thin,
     rate: r.delayed15_rate,
-    median: r.median_lead_min,
+    median: r.median_horizon_min ?? r.median_lead_min,
     model: r.model.auc,
     baseline: r.baseline?.auc ?? null,
     mae: r.model.mae,
   }))
   const hasBaseline = data.some((d) => d.baseline != null)
+  const anyThin = data.some((d) => d.thin)
   return (
-    <div>
+    <div
+      role="img"
+      aria-label={`AUC by forecast horizon. ${data
+        .map(
+          (d) => `${d.label}: model ${nf(d.model)}${hasBaseline ? `, baseline ${nf(d.baseline)}` : ''}, ${d.n} flights`,
+        )
+        .join('; ')}.`}
+    >
       <Legend
         items={[
           { color: SERIES_1, label: COIN_FLIP.model },
@@ -151,13 +176,13 @@ export function LeadBucketBars({ rows }: { rows: LeadBucket[] }) {
               if (!active || !r) return null
               return (
                 <TipBox
-                  title={`last score ${r.label} before departure`}
+                  title={`last score ${r.label === 'after STD' ? 'after the scheduled time' : `${r.label} before the scheduled time`}`}
                   rows={[
                     ['model AUC', f3(r.model)],
                     ...(hasBaseline ? ([['baseline AUC', f3(r.baseline)]] as [string, string][]) : []),
                     ['model MAE', r.mae == null ? '—' : `${num(r.mae, 1)} min`],
                     ['flights', `${num(r.n)}${r.thin ? ' (thin — treat as noise)' : ''}`],
-                    ['median lead', r.median == null ? '—' : `${num(r.median)} min`],
+                    ['median horizon', r.median == null ? '—' : `${num(r.median)} min`],
                     ['were > 15 min late', r.rate == null ? '—' : `${Math.round(r.rate * 100)} %`],
                   ]}
                 />
@@ -177,6 +202,7 @@ export function LeadBucketBars({ rows }: { rows: LeadBucket[] }) {
             {d.thin ? ' (thin)' : ''}
           </span>
         ))}
+        {anyThin && <span> — “thin” = under {num(thinAt ?? 100)} flights, where an AUC is mostly noise.</span>}
       </p>
     </div>
   )

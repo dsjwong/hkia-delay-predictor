@@ -114,13 +114,24 @@ def daily_bars(daily: pd.DataFrame) -> go.Figure:
 
 
 # ------------------------------------------------------------------ model
-def reliability(cal: pd.DataFrame, label: str = "XGBoost (test)", title: str = "Reliability diagram (marker size ~ bin count)") -> go.Figure:
+def reliability(cal: pd.DataFrame, label: str = "XGBoost (test)", title: str = "Reliability diagram (marker size ~ bin count)",
+                min_n: int = 0) -> go.Figure:
+    """Bins with fewer than `min_n` flights are drawn hollow and the connecting line skips them: joining a 6-flight bin
+    to its neighbours turns three coin flips into a dramatic-looking zig-zag."""
+    thin = (cal["n"] < min_n).to_numpy() if min_n else np.zeros(len(cal), dtype=bool)
     fig = go.Figure()
     fig.add_scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(color=T.GREY, width=1), name="perfect calibration", hoverinfo="skip")
-    fig.add_scatter(x=cal["pred_mean"], y=cal["obs_rate"], mode="lines+markers", name=label,
-                    marker=dict(size=np.clip(np.sqrt(cal["n"]) * 0.6, 7, 24), color=T.AMBER, line=dict(color=T.SURFACE_2, width=2)),
-                    line=dict(color=T.AMBER, width=1.5), customdata=cal["n"],
-                    hovertemplate="predicted %{x:.2f} · observed %{y:.2f} · n=%{customdata:,}<extra></extra>")
+    fig.add_scatter(x=cal["pred_mean"], y=np.where(thin, np.nan, cal["obs_rate"]), mode="lines", name=label,
+                    line=dict(color=T.AMBER, width=1.5), connectgaps=False, hoverinfo="skip", showlegend=True)
+    size = np.clip(np.sqrt(cal["n"]) * 0.6, 7, 24)
+    hov = "predicted %{x:.2f} · observed %{y:.2f} · n=%{customdata:,}<extra></extra>"
+    fig.add_scatter(x=cal["pred_mean"][~thin], y=cal["obs_rate"][~thin], mode="markers", name=label, showlegend=False,
+                    marker=dict(size=size[~thin], color=T.AMBER, line=dict(color=T.SURFACE_2, width=2)),
+                    customdata=cal["n"][~thin], hovertemplate=hov)
+    if thin.any():   # hollow, and its own trace so the legend swatch is hollow too
+        fig.add_scatter(x=cal["pred_mean"][thin], y=cal["obs_rate"][thin], mode="markers", name=f"under {min_n} flights",
+                        marker=dict(size=size[thin], color=T.SURFACE_2, line=dict(color=T.AMBER, width=2)),
+                        customdata=cal["n"][thin], hovertemplate=hov)
     fig.update_layout(title=title, xaxis=dict(title="mean predicted P(delay > 15)", range=[0, 1], showgrid=True, gridcolor=T.GRID),
                       yaxis=dict(title="observed rate", range=[0, 1]))
     return T.finish(fig, 380)
@@ -146,7 +157,7 @@ def live_daily_auc(daily: pd.DataFrame) -> go.Figure:
     rng, ticks = _auc_axis(list(daily["model_auc"]) + (list(daily["baseline_auc"]) if has_b else []))
     fig.add_hline(y=0.5, line=dict(color=T.GREY, width=1), annotation_text="coin flip", annotation_position="bottom right",
                   annotation=dict(font=dict(size=10, color=T.MUTED)))
-    cd = np.stack([daily["n"], daily["delayed15_rate"].fillna(np.nan), daily["model_mae"].fillna(np.nan)], axis=1)
+    cd = np.stack([daily["n"], daily["delayed15_rate"], daily["model_mae"]], axis=1)
     fig.add_scatter(x=daily["date"], y=daily["model_auc"], mode="lines+markers", name="model (XGBoost, live)",
                     line=dict(color=T.AMBER, width=1.5), marker=dict(color=T.AMBER, size=7), customdata=cd,
                     hovertemplate="%{x} · AUC %{y:.3f}<br>n=%{customdata[0]} · %{customdata[1]:.0%} late · MAE %{customdata[2]:.1f} min<extra></extra>")
@@ -171,7 +182,7 @@ def lead_bucket_bars(buckets: pd.DataFrame) -> go.Figure:
                     hovertemplate="AUC %{y:.3f} · n=%{customdata}<extra>baseline</extra>", **BAR)
     fig.add_hline(y=0.5, line=dict(color=T.GREY, width=1), annotation_text="coin flip", annotation_position="top right",
                   annotation=dict(font=dict(size=10, color=T.MUTED)))
-    fig.update_layout(title="AUC by lead time before departure", barmode="group", bargap=0.4, bargroupgap=0.08,
+    fig.update_layout(title="AUC by forecast horizon (score → scheduled departure)", barmode="group", bargap=0.4, bargroupgap=0.08,
                       yaxis=dict(range=[0, 1], tickformat=".2f"), xaxis=dict(title=""))
     return T.finish(fig, 300)
 

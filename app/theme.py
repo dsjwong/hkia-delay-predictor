@@ -156,10 +156,13 @@ div[data-testid="stMetric"] label p {{ font-size: 0.7rem !important; font-weight
 div[data-testid="stMetricValue"] {{ font-family: {MONO} !important; font-size: 1.6rem !important; font-weight: 500; color: {INK}; line-height: 1.2;
   letter-spacing: -0.02em; }}
 div[data-testid="stMetricValue"] > div {{ font-family: {MONO} !important; }}
-div[data-testid="stMetricDelta"] {{ font-size: 0.78rem !important; color: {MUTED} !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+/* wraps rather than truncating: the delta carries the bootstrap interval, and a cut-off "95 % CI -0.0..." is worse than two lines */
+div[data-testid="stMetricDelta"] {{ font-size: 0.78rem !important; color: {MUTED} !important; white-space: normal; line-height: 1.35;
   background: transparent !important; padding: 0 !important; margin-top: 2px; }}
-div[data-testid="stMetricDelta"] > div {{ color: {MUTED} !important; background: transparent !important; padding: 0 !important; }}
-div[data-testid="stMetricDelta"] p {{ color: {MUTED} !important; font-size: 0.78rem !important; }}
+div[data-testid="stMetricDelta"] > div {{ color: {MUTED} !important; background: transparent !important; padding: 0 !important;
+  white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }}
+div[data-testid="stMetricDelta"] p {{ color: {MUTED} !important; font-size: 0.78rem !important; white-space: normal !important;
+  overflow: visible !important; text-overflow: clip !important; }}
 div[data-testid="stMetricDelta"] svg {{ display: none; }}
 /* strips / badges */
 .hk-strip {{ font-family: {MONO}; font-size: 0.76rem; color: {INK_2}; background: {SURFACE_2}; border: 1px solid {BORDER};

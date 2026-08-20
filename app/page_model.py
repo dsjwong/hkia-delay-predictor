@@ -15,13 +15,43 @@ def _f(x, nd=3, dash="—") -> str:
 
 def _daily_df(ev: dict) -> pd.DataFrame:
     return pd.DataFrame([{"date": r["date"], "n": r["n"], "delayed15_rate": r["delayed15_rate"], "thin": r["thin"],
-                          "model_auc": r["model"]["auc"], "model_mae": r["model"]["mae"],
+                          "partial": r.get("partial", False), "model_auc": r["model"]["auc"], "model_mae": r["model"]["mae"],
                           "baseline_auc": (r.get("baseline") or {}).get("auc")} for r in ev.get("daily") or []])
 
 
 def _bucket_df(ev: dict) -> pd.DataFrame:
     return pd.DataFrame([{"label": r["label"], "n": r["n"], "thin": r["thin"], "model_auc": r["model"]["auc"],
                           "baseline_auc": (r.get("baseline") or {}).get("auc")} for r in ev.get("lead_buckets") or []])
+
+
+def _delta_caption(ev: dict, key: str, nd: int = 3, unit: str = "") -> str | None:
+    """`+0.017 vs baseline 0.647` — with the bootstrap interval, and the words "within noise" when it straddles 0.
+
+    A delta reported without its interval is the single most misleading thing this page could do: +0.017 AUC on four
+    days of flights looks like a win and is not one.
+    """
+    d = (ev.get("deltas") or {}).get(key)
+    if d is None:
+        return None
+    b = (ev.get("baseline_airline_hour") or {}).get(key)
+    out = f"{d:+.{nd}f}{unit} vs baseline {_f(b, nd)}"
+    bs = ev.get("bootstrap") or {}
+    ci = (bs.get("ci") or {}).get(key)
+    if ci:
+        out += f" · 95 % CI {ci[0]:+.{nd}f}…{ci[1]:+.{nd}f}"
+        if not (bs.get("beats_baseline") or {}).get(key):
+            out += " (within noise)"
+    return out
+
+
+def _verdict(ev: dict) -> str:
+    labels = {"auc": "AUC", "brier": "Brier", "logloss": "log loss", "mae": "MAE"}
+    bs = ev.get("bootstrap") or {}
+    if not bs:
+        return "on this much data the margins should be read as provisional."
+    won = [labels[k] for k in ("auc", "brier", "logloss", "mae") if (bs.get("beats_baseline") or {}).get(k)]
+    return (f"on this window the model is separably better on {', '.join(won)}; the rest are inside the noise."
+            if won else "on this window none of the margins clear the noise yet.")
 
 
 def _notable_df(rows: list[dict]) -> pd.DataFrame:
@@ -50,6 +80,9 @@ def _notable_table(rows: list[dict], title: str) -> None:
 def _report_card(ev: dict) -> None:
     """The live report card: what the published predictions were actually worth, graded after the flights departed."""
     st.markdown("#### Model report card — live, graded after the fact")
+    if str(ev.get("status", "")).startswith("error"):   # a broken pipeline must not look like a young one
+        st.error(f"The live evaluation could not be computed: {ev['status']}")
+        return
     if ev["status"] != "ok":
         st.info(f"Collecting — **{ev['n_matured']}** matured predictions so far (need ≥ {ev['min_n']}). A prediction matures when its "
                 "flight departs; the metric uses the last score written before departure. Scoring started 2026-08-17.")
@@ -60,12 +93,16 @@ def _report_card(ev: dict) -> None:
                f"n = {ev['n_matured']:,} · observed P(delay > 15) = {ev['delayed15_rate']:.2f} · median lead time between the last "
                f"score and departure {ev['median_lead_min']:.0f} min · computed {ev.get('computed_at', '')[:16].replace('T', ' ')} UTC")
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("AUC (live)", _f(m.get("auc")), f"{d['auc']:+.3f} vs baseline {_f(b.get('auc'))}" if d.get("auc") is not None else None)
-    k2.metric("Brier", _f(m.get("brier")), f"{d['brier']:+.3f} vs baseline {_f(b.get('brier'))}" if d.get("brier") is not None else None,
-              delta_color="inverse")
-    k3.metric("MAE (min)", _f(m.get("mae"), 1), f"{d['mae']:+.1f} min vs baseline {_f(b.get('mae'), 1)}" if d.get("mae") is not None else None,
-              delta_color="inverse")
-    k4.metric("Matured predictions", f"{ev['n_matured']:,}", f"{ev['window_days']}-day window · {ev['date_min'][5:]} → {ev['date_max'][5:]}")
+    # delta_color="off" for a margin whose CI straddles 0: green would claim a win the data does not support
+    sig = (ev.get("bootstrap") or {}).get("beats_baseline") or {}
+    k1.metric("AUC (live)", _f(m.get("auc")), _delta_caption(ev, "auc"), delta_color="normal" if sig.get("auc") else "off")
+    k2.metric("Brier", _f(m.get("brier")), _delta_caption(ev, "brier"), delta_color="inverse" if sig.get("brier") else "off")
+    k3.metric("MAE (min)", _f(m.get("mae"), 1), _delta_caption(ev, "mae", 1, " min"),
+              delta_color="inverse" if sig.get("mae") else "off")
+    cov = ev.get("coverage") or {}
+    k4.metric("Matured predictions", f"{ev['n_matured']:,}",
+              f"{cov['pct']:.0%} of the {cov['n_departed']:,} departures {ev['date_min'][5:]} → {ev['date_max'][5:]}"
+              if cov.get("pct") is not None else f"{ev['window_days']}-day window · {ev['date_min'][5:]} → {ev['date_max'][5:]}")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -74,6 +111,10 @@ def _report_card(ev: dict) -> None:
             st.info("No daily series in this snapshot — re-run `python -m hkia.evaluate`.")
         else:
             st.plotly_chart(C.live_daily_auc(daily), width="stretch")
+            part = [r["date"][5:] for r in ev["daily"] if r.get("partial")]
+            if part:   # the window's first and last dates are truncated: not comparable with a full day
+                st.caption(f"{' and '.join(part)} {'are' if len(part) > 1 else 'is'} a partial day — the rolling window "
+                           "starts and ends part-way through a date, so those points cover fewer flights.")
     with c2:
         buckets = _bucket_df(ev)
         if buckets.empty:
@@ -81,8 +122,11 @@ def _report_card(ev: dict) -> None:
         else:
             st.plotly_chart(C.lead_bucket_bars(buckets), width="stretch")
             thin = [r["label"] for r in ev["lead_buckets"] if r["thin"]]
-            st.caption("Minutes between the last score written for a flight and its actual departure — the further out, the less is known."
-                       + (f" Thin buckets (< {ev.get('min_slice_n', 20)} flights, AUC is mostly noise): {', '.join(thin)}." if thin else ""))
+            st.caption("Minutes between the last score and the **scheduled** departure. Deliberately not the actual one: "
+                       "`actual − scored` is a function of the delay itself (a flight is only ever scored six hours before "
+                       "it left because it left six hours late), so bucketing on it would stratify by the outcome. "
+                       "`after STD` = the score landed after the scheduled time, i.e. the flight was already visibly late."
+                       + (f" Thin buckets (< {ev.get('min_slice_n', 100)} flights, AUC is mostly noise): {', '.join(thin)}." if thin else ""))
 
     c3, c4 = st.columns(2)
     with c3:
@@ -90,7 +134,10 @@ def _report_card(ev: dict) -> None:
         if cal.empty:
             st.info("No live calibration in this snapshot — re-run `python -m hkia.evaluate`.")
         else:
-            st.plotly_chart(C.reliability(cal, "XGBoost (live)", "Calibration on live data (10 equal-width bins)"), width="stretch")
+            st.plotly_chart(C.reliability(cal, "XGBoost (live)", "Calibration on live data (10 equal-width bins)",
+                                          min_n=ev.get("cal_min_n", 30)), width="stretch")
+            st.caption(f"Bins under {ev.get('cal_min_n', 30)} flights are drawn hollow and left unconnected — an observed "
+                       "rate on six flights moves 17 points per flight.")
     with c4:
         st.markdown("###### How this is computed")
         st.markdown(
@@ -101,9 +148,14 @@ def _report_card(ev: dict) -> None:
             f"{ev['date_min']} → {ev['date_max']}, of which {ev['delayed15_rate']:.0%} were more than 15 minutes late. The comparison is "
             f"the same baseline used at training time: the **airline × hour lookup table** — the historical delay rate for that airline in "
             f"that hour of day, fitted on the training split only, with no weather and no congestion.")
-        st.caption(f"Nothing here is a back-test: these are the numbers the site actually showed, graded after the fact. The margin over the "
-                   f"lookup table is real but modest, the sample is a few days long, and slices with fewer than {ev.get('min_slice_n', 20)} "
-                   f"flights are labelled thin because their AUC is mostly noise.")
+        cov = ev.get("coverage") or {}
+        coverage = (f"Coverage is {cov['pct']:.0%} — {cov['n_scored']:,} of the {cov['n_departed']:,} departures on those dates were "
+                    "scored in time; the rest are excluded and are not a random sample (the cron tends to miss the flights that left "
+                    "promptly), so the late rate above is the rate among scored flights. " if cov.get("pct") is not None else "")
+        st.caption("Nothing here is a back-test: these are the numbers the site actually showed, graded after the fact. "
+                   + coverage
+                   + f"Slices with fewer than {ev.get('min_slice_n', 100)} flights are labelled thin because their AUC is mostly noise, "
+                   + f"and every margin carries a 95 % paired-bootstrap interval — {_verdict(ev)}")
 
     nb = ev.get("notable") or {}
     st.markdown(f"###### Notable flights of the last {ev['window_days']} days")
@@ -111,6 +163,11 @@ def _report_card(ev: dict) -> None:
     n1, n2 = st.columns(2)
     with n1:
         _notable_table(nb.get("confident_correct") or [], "Confident and correct — high P, and they were late")
+        hc = nb.get("high_confidence") or {}
+        if hc.get("n"):
+            st.caption(f"That table is picked *after* the fact, so it can only contain wins. The honest counterpart: of "
+                       f"**all {hc['n']} calls published at P ≥ {hc['threshold']:.0%}**, {hc['n_late']} were more than 15 minutes "
+                       f"late ({hc['rate']:.0%}).")
     with n2:
         _notable_table(nb.get("worst_misses") or [], "Biggest misses — both directions")
     if not has_b:
