@@ -25,6 +25,12 @@ export interface Meta {
 
 export type FlightStatus = 'scheduled' | 'departed' | 'cancelled'
 
+/** One attribution row of the "why this prediction" block, written by src/hkia/explain.py:
+ *  `[direction, one-liner, probability points]` — direction +1 when the feature pushed P(delay > 15) up.
+ *  The values are local SHAP contributions for that single prediction, converted from log-odds to probability
+ *  points by linearising at the flight's own p (see the module docstring of hkia/explain.py). */
+export type WhyItem = [dir: 1 | -1, text: string, pp: number]
+
 export interface Flight {
   flight_no: string
   airline: string | null
@@ -41,6 +47,8 @@ export interface Flight {
   p: number | null
   pred_min: number | null
   scored_at: string | null
+  /** top-3 drivers of the latest score; only written for flights that have not departed yet */
+  why?: WhyItem[]
   /** [epoch_s, p, pred_min] */
   history?: [number, number | null, number | null][]
 }

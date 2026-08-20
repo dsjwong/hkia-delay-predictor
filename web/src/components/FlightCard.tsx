@@ -1,11 +1,12 @@
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { Badge } from './ui/badge'
 import { PBar } from './PBar'
 import { Sparkline } from './Sparkline'
 import { airlineName, destLabel } from '@/lib/data'
-import type { Flight, Meta } from '@/lib/types'
+import type { Flight, Meta, WhyItem } from '@/lib/types'
 import { dt, hm, num, pct, signed } from '@/lib/time'
 import type { Aircraft } from '@/lib/adsb'
-import { amberHex } from '@/lib/theme'
+import { amberHex, SERIES_1, SERIES_2 } from '@/lib/theme'
 
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (
@@ -13,6 +14,48 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
       <span className="text-xs text-muted">{k}</span>
       <span className="text-sm text-ink text-right hk-num">{v}</span>
     </div>
+  )
+}
+
+/** One driver of the prediction: an arrow (up = pushed P up, amber; down = pushed it down, teal), the plain-English
+ *  reason, and the size of the push in probability points. Direction is never carried by colour alone — the arrow
+ *  glyph and the signed number both say it, and a visually-hidden word says it to a screen reader. */
+export function WhyRow({ item }: { item: WhyItem }) {
+  const [dir, text, pp] = item
+  const up = dir > 0
+  const Icon = up ? ArrowUp : ArrowDown
+  return (
+    <li className="flex items-baseline gap-2 py-1 border-b border-border/60 last:border-0">
+      <Icon aria-hidden className="size-3.5 shrink-0 translate-y-0.5" style={{ color: up ? SERIES_1 : SERIES_2 }} />
+      <span className="sr-only">{up ? 'raises the probability:' : 'lowers the probability:'}</span>
+      <span className="text-sm text-ink flex-1">{text}</span>
+      <span className="text-xs text-muted hk-num whitespace-nowrap" title="probability points">
+        {signed(pp, 1)} pp
+      </span>
+    </li>
+  )
+}
+
+/** "Why this prediction": the top three local SHAP attributions, or an empty state for an older snapshot. */
+export function WhyBlock({ why }: { why?: WhyItem[] }) {
+  if (!why?.length)
+    return (
+      <div className="text-sm text-muted bg-elev rounded-md px-3 py-2.5">
+        No attribution in this snapshot — they are written for flights that have not departed yet.
+      </div>
+    )
+  return (
+    <>
+      <ul>
+        {why.map((w, i) => (
+          <WhyRow key={i} item={w} />
+        ))}
+      </ul>
+      <p className="text-[0.7rem] text-muted leading-relaxed mt-2">
+        Attributions are local SHAP values for this single prediction, in probability points: they explain the model,
+        not the world.
+      </p>
+    </>
   )
 }
 
@@ -112,6 +155,15 @@ export function FlightCard({
           </div>
         )}
       </section>
+
+      {f.p != null && (
+        <section aria-labelledby="fc-why">
+          <h4 id="fc-why" className="hk-kicker mb-2">
+            Why this prediction
+          </h4>
+          <WhyBlock why={f.why} />
+        </section>
+      )}
 
       <section aria-labelledby="fc-sched">
         <h4 id="fc-sched" className="hk-kicker mb-1">
