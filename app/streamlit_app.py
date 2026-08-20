@@ -18,12 +18,13 @@ import data as D  # noqa: E402
 import theme as T  # noqa: E402
 
 REPO = "https://github.com/dsjwong/hkia-delay-predictor"
-PAGES = ["Live map", "Today", "Patterns", "Model", "About"]
+PAGES = ["Live map", "Today", "Patterns", "Model", "Case study", "About"]
 SUBTITLES = {
     "Live map": "Aircraft within 100 nm of VHHH · HKIA departures coloured by P(delay > 15)",
     "Today": "Every HKIA departure with its latest P(delay > 15 min) and predicted minutes",
     "Patterns": "Delay patterns over the rolling 91-day window",
     "Model": "XGBoost vs the airline × hour baseline on a date-ordered test split, plus live evaluation",
+    "Case study": "Typhoon Noul, 24–26 Jul 2026 — hour by hour, with an in-sample model retrospective",
     "About": "What this is, how it is built, where the data comes from",
 }
 
@@ -75,6 +76,9 @@ elif page == PAGES[2]:
 elif page == PAGES[3]:
     import page_model
     page_model.render()
+elif page == PAGES[4]:
+    import page_case
+    page_case.render()
 else:
     import page_about
     page_about.render()

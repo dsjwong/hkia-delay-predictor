@@ -184,6 +184,20 @@ def typhoon_days(days: int = HISTORY_DAYS) -> pd.DataFrame:
     return per_day
 
 
+# ---------------------------------------------------------------- case study
+CASE_JSON = ROOT / "web" / "public" / "data" / "case_noul.json"
+
+
+@st.cache_data(ttl=TTL)
+def case_study() -> dict | None:
+    """The Typhoon Noul artefact written by `python -m hkia.case_study` and committed.
+
+    Read from the same JSON the React app fetches rather than re-derived from the db, so the two front ends can never
+    drift apart on a number, and Streamlit Cloud needs neither xgboost nor the analysis to render the page.
+    """
+    return json.loads(CASE_JSON.read_text()) if CASE_JSON.exists() else None
+
+
 # ---------------------------------------------------------------- model artefacts
 @st.cache_data(ttl=TTL)
 def manifest() -> dict | None:

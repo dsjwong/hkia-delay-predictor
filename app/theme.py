@@ -40,6 +40,12 @@ GREY = "#52525b"           # zinc-600: de-emphasis, reference lines
 # -- sequential ramps (one hue each; dim -> bright on the dark surface)
 AMBER_RAMP = ["#6b4608", "#94620a", "#bd7f0c", "#e39d14", "#ffbf3d"]             # P(delay > 15)
 ZINC_RAMP = ["#45454c", "#5e5e66", "#7a7a83", "#9c9ca4", "#c4c4ca", "#ececef"]   # heatmap magnitude
+# -- typhoon-signal background bands (Case-study page). Not a colour-encoded series: they are labelled regions behind
+# the delay bars, so the level is read off the T1/T3/T8/T9 annotation, never off the tint. The dataviz validator's
+# ordinal gate does not apply (and does not pass) — a band bright enough to clear 2:1 vs the card would out-shout the
+# bars it sits behind.
+SIGNAL_BAND = {1: "rgba(250,250,250,0.040)", 3: "rgba(250,250,250,0.070)",
+               8: "rgba(250,250,250,0.115)", 9: "rgba(250,250,250,0.165)", 10: "rgba(250,250,250,0.200)"}
 # -- status (reserved)
 GOOD, WARNING, CRITICAL = "#22c55e", "#f59e0b", "#ef4444"
 

@@ -193,3 +193,77 @@ def importance_hbar(imp: pd.Series, title: str) -> go.Figure:
     fig.update_layout(title=title, bargap=0.35, xaxis=dict(title="gain", showgrid=True, gridcolor=T.GRID),
                       yaxis=dict(showgrid=False, tickfont=dict(size=11, color=T.INK_2)), margin=dict(b=40))
     return T.finish(fig, 400)
+
+
+# ------------------------------------------------------------------ case study (Typhoon Noul)
+def _band_shapes(fig: go.Figure, hourly: pd.DataFrame, y_top: float) -> None:
+    """Contiguous runs of the same TC signal as shaded background bands with a T1/T3/T8/T9 annotation.
+
+    The signal is deliberately NOT a second y-axis: the level is read off the label, the tint only groups the hours.
+    """
+    run_id = (hourly["signal"] != hourly["signal"].shift()).cumsum()
+    for _, g in hourly.groupby(run_id, sort=False):
+        sig = int(g["signal"].iloc[0])
+        if sig <= 0:
+            continue
+        x0 = g["t"].iloc[0] - pd.Timedelta(minutes=30)
+        x1 = g["t"].iloc[-1] + pd.Timedelta(minutes=30)
+        fig.add_vrect(x0=x0, x1=x1, fillcolor=T.SIGNAL_BAND.get(sig, T.SIGNAL_BAND[1]), layer="below", line_width=0)
+        if len(g) >= 2:
+            fig.add_annotation(x=g["t"].iloc[len(g) // 2], y=y_top, text=f"T{sig}", showarrow=False, yanchor="top",
+                               font=dict(size=10, color=T.MUTED, weight=600))
+
+
+def case_hourly_delay(hourly: pd.DataFrame) -> go.Figure:
+    """Centrepiece: hourly mean departure delay (bars) with the TC signal as labelled background bands. One y-axis."""
+    top = max(60.0, float(np.ceil(hourly["mean_delay"].max() * 1.12 / 60) * 60))
+    bottom = min(0.0, float(np.floor(hourly["mean_delay"].min() / 30) * 30))
+    fig = go.Figure()
+    custom = np.stack([hourly["n_departed"], hourly["n_sched"], hourly["n_cancelled"], hourly["signal"],
+                       hourly["p90_delay"].fillna(0), hourly["wgst_kt"].fillna(0)], axis=1)
+    fig.add_bar(x=hourly["t"], y=hourly["mean_delay"], marker_color=T.AMBER, name="mean departure delay (min)",
+                customdata=custom,
+                hovertemplate="%{x|%d %b %H:%M} HKT · signal %{customdata[3]:.0f}<br>mean %{y:.0f} min · p90 "
+                              "%{customdata[4]:.0f} min<br>%{customdata[0]:.0f}/%{customdata[1]:.0f} departed · "
+                              "%{customdata[2]:.0f} cancelled · gust %{customdata[5]:.0f} kt<extra></extra>", **BAR)
+    _band_shapes(fig, hourly, top)
+    fig.update_layout(title="Mean departure delay by hour, with the signal in force behind it",
+                      yaxis=dict(title="min", range=[bottom, top], dtick=120),
+                      xaxis=dict(title="scheduled hour (HKT)", tickformat="%d %b\n%H:%M"),
+                      bargap=0.1, showlegend=False)
+    return T.finish(fig, 340)
+
+
+def case_wind(hourly: pd.DataFrame) -> go.Figure:
+    """Wind panel under the centrepiece: own axis (knots), two lines, legend."""
+    fig = go.Figure()
+    fig.add_scatter(x=hourly["t"], y=hourly["wspd_kt"], name="sustained wind (kt)", mode="lines",
+                    line=dict(color=T.NEUTRAL, width=1.25), hovertemplate="%{x|%d %b %H:%M} · %{y:.0f} kt<extra></extra>")
+    fig.add_scatter(x=hourly["t"], y=hourly["wgst_kt"], name="gust (kt)", mode="lines",
+                    line=dict(color=T.TEAL, width=1.5), hovertemplate="%{x|%d %b %H:%M} · gust %{y:.0f} kt<extra></extra>")
+    fig.update_layout(title="Wind at the field — VHHH hourly METAR", yaxis_title="kt",
+                      xaxis=dict(tickformat="%d %b\n%H:%M"))
+    return T.finish(fig, 240)
+
+
+def case_cancellations(hourly: pd.DataFrame) -> go.Figure:
+    """Cancellations per hour: own panel, own axis. Red = cancelled (the app-wide meaning), never beside the amber bars."""
+    fig = go.Figure()
+    fig.add_bar(x=hourly["t"], y=hourly["n_cancelled"], marker_color=T.CRITICAL, name="departures cancelled",
+                customdata=hourly["n_sched"],
+                hovertemplate="%{x|%d %b %H:%M} · %{y:.0f} cancelled of %{customdata:.0f} scheduled<extra></extra>", **BAR)
+    fig.update_layout(title="Cancellations per hour", yaxis_title="flights", bargap=0.1, showlegend=False,
+                      xaxis=dict(tickformat="%d %b\n%H:%M"))
+    return T.finish(fig, 240)
+
+
+def case_pred_vs_obs(rows: pd.DataFrame) -> go.Figure:
+    """Retrospective: predicted vs observed mean delay per signal level. Two series, legend, in-sample in the title."""
+    fig = go.Figure()
+    fig.add_bar(x=rows["label"], y=rows["mean_pred_delay"], name="model, predicted delay (in-sample)",
+                marker_color=T.AMBER, hovertemplate="%{x} · predicted %{y:.0f} min<extra></extra>", **BAR)
+    fig.add_bar(x=rows["label"], y=rows["mean_obs_delay"], name="observed delay", marker_color=T.TEAL,
+                hovertemplate="%{x} · observed %{y:.0f} min<extra></extra>", **BAR)
+    fig.update_layout(title="Retrospective (in-sample): predicted vs observed delay by signal level",
+                      yaxis_title="min", barmode="group", bargap=0.35, bargroupgap=0.08)
+    return T.finish(fig, 280)
