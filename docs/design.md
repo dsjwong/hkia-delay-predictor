@@ -39,6 +39,12 @@ No blue chrome anywhere; links are `ink` with a `border-2` underline.
   `SERIES_4 #db2777` — all five checks PASS (worst adjacent CVD ΔE 10.4, normal-vision 24.3, ≥ 3:1 contrast).
 - `AMBER_RAMP` `#78350f → #b45309 → #d97706 → #f59e0b → #fcd34d`: P(delay > 15) 0 → 1 — plane icons, PBar, flight-card hero figure.
 - `HEAT_RAMP` `#2a1a08 → #f7c55a`: heatmap magnitude (mean delay / late share) — same hue so "more amber = more delay" holds app-wide.
+- Live **model report card** (Model route, `web/src/charts/ReportCharts.tsx` + `web/src/components/ReportCard.tsx`): two series only —
+  `SERIES_1` = the model, `SERIES_2` = the airline × hour baseline — with a legend on every chart and a `NEUTRAL` 0.5 coin-flip reference
+  line on every AUC chart, because an AUC axis without that anchor flatters the model. Daily AUC uses a round-tenth y range that always
+  keeps 0.5 in view; lead-time bars start at 0. Outcome badges in the notable-flights table pair the colour with a ✓/✗ icon and the words.
+  The Streamlit twin (`app/charts.py: live_daily_auc, lead_bucket_bars`) uses the same meaning in the Streamlit slots (amber `#c9820c`
+  model, teal `#14a88d` baseline — re-validated on `#18181b`, all checks PASS).
 - `NEUTRAL #52525b` for reference lines (perfect-calibration diagonal, P = 0.5 line). Grid `#27272a` solid hairline, no dashes. One axis
   per chart; legends for ≥ 2 series; `TipBox` tooltip on every mark; text always in text tokens.
 - Map: other traffic zinc-500 → zinc-100 by altitude, tracked-not-scored zinc-50, tracked-scored amber ramp, hover ring zinc-50, selected
