@@ -108,6 +108,16 @@ def test_today_page_explains_the_selected_flight():
         assert any("No attribution stored" in c.value for c in at.caption)
 
 
+def test_today_page_survives_a_selection_left_over_from_a_wider_filter():
+    """Streamlit keeps the backend row selection across a data change, so the index can point past the end."""
+    at = _run("today")
+    n = len(at.dataframe[0].value)
+    at.session_state["today_flights"] = {"selection": {"rows": [n + 50], "columns": []}}
+    at = at.run()
+    assert not at.exception, [str(e) for e in at.exception]
+    assert any("Select a row in the table above" in c.value for c in at.caption)
+
+
 def test_patterns_page_renders():
     at = _run("patterns")
     assert any("Delay patterns" in m.value for m in at.markdown)

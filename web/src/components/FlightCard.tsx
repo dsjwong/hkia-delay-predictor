@@ -156,7 +156,9 @@ export function FlightCard({
         )}
       </section>
 
-      {f.p != null && (
+      {/* only for flights that have not left: the exporter writes `why` for those, so gating on `p` alone would put an
+          empty box on every departed-but-scored flight — two thirds of the day's table */}
+      {f.p != null && f.status === 'scheduled' && (
         <section aria-labelledby="fc-why">
           <h4 id="fc-why" className="hk-kicker mb-2">
             Why this prediction

@@ -60,6 +60,11 @@ describe('FlightCard — why this prediction', () => {
     expect(within(block()).queryAllByRole('listitem')).toHaveLength(0)
   })
 
+  it('hides the block for a departed flight — the exporter only writes attributions for pending ones', () => {
+    render(<FlightCard flight={{ ...FLIGHT, status: 'departed', actual_ts: '2026-08-20T16:31:00Z', why: undefined }} meta={null} />)
+    expect(screen.queryByRole('region', { name: /why this prediction/i })).toBeNull()
+  })
+
   it('hides the block entirely for a flight that was never scored', () => {
     render(<FlightCard flight={{ ...FLIGHT, p: null, why: undefined }} meta={null} />)
     expect(screen.queryByRole('region', { name: /why this prediction/i })).toBeNull()

@@ -116,7 +116,9 @@ def render(fresh: dict) -> None:
 def _why_section(date: str, v: pd.DataFrame, event) -> None:
     """Top-3 drivers of the selected flight's latest score (pick a row in the table above)."""
     st.markdown("#### Why this prediction")
-    picked = list(getattr(getattr(event, "selection", None), "rows", []) or [])
+    # Streamlit keeps the backend selection across a data change (the element id is stable because of `key=`), so a row
+    # index picked before a filter narrowed the table can point past the end — clamp instead of raising IndexError.
+    picked = [i for i in (getattr(getattr(event, "selection", None), "rows", []) or []) if 0 <= i < len(v)]
     if not picked:
         st.caption("Select a row in the table above to see the three features that moved that flight's P(delay > 15) the most.")
         return
