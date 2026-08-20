@@ -114,16 +114,67 @@ def daily_bars(daily: pd.DataFrame) -> go.Figure:
 
 
 # ------------------------------------------------------------------ model
-def reliability(cal: pd.DataFrame) -> go.Figure:
+def reliability(cal: pd.DataFrame, label: str = "XGBoost (test)", title: str = "Reliability diagram (marker size ~ bin count)") -> go.Figure:
     fig = go.Figure()
     fig.add_scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(color=T.GREY, width=1), name="perfect calibration", hoverinfo="skip")
-    fig.add_scatter(x=cal["pred_mean"], y=cal["obs_rate"], mode="lines+markers", name="XGBoost (test)",
+    fig.add_scatter(x=cal["pred_mean"], y=cal["obs_rate"], mode="lines+markers", name=label,
                     marker=dict(size=np.clip(np.sqrt(cal["n"]) * 0.6, 7, 24), color=T.AMBER, line=dict(color=T.SURFACE_2, width=2)),
                     line=dict(color=T.AMBER, width=1.5), customdata=cal["n"],
                     hovertemplate="predicted %{x:.2f} · observed %{y:.2f} · n=%{customdata:,}<extra></extra>")
-    fig.update_layout(title="Reliability diagram (marker size ~ bin count)", xaxis=dict(title="mean predicted P(delay > 15)", range=[0, 1], showgrid=True, gridcolor=T.GRID),
+    fig.update_layout(title=title, xaxis=dict(title="mean predicted P(delay > 15)", range=[0, 1], showgrid=True, gridcolor=T.GRID),
                       yaxis=dict(title="observed rate", range=[0, 1]))
     return T.finish(fig, 380)
+
+
+# ------------------------------------------------------------------ live report card
+def _auc_axis(values: list) -> tuple[list[float], list[float]]:
+    """Round-tenth y range that always keeps the 0.5 coin-flip line in view without squashing a 0.58 -> 0.71 spread."""
+    v = [x for x in values if x is not None and x == x]
+    lo = np.floor(min([0.45, *v]) * 10) / 10
+    hi = np.ceil(max([0.8, *v]) * 10) / 10
+    ticks = [round(t, 1) for t in np.arange(lo, hi + 1e-9, 0.1)]
+    return [max(0.0, lo), min(1.0, hi)], ticks
+
+
+def live_daily_auc(daily: pd.DataFrame) -> go.Figure:
+    """AUC per HKT departure date, model vs airline x hour baseline, with the coin-flip reference line.
+
+    A day whose flights were all on time (or all late) has no AUC: the point is missing, never faked as 0.5.
+    """
+    fig = go.Figure()
+    has_b = "baseline_auc" in daily and daily["baseline_auc"].notna().any()
+    rng, ticks = _auc_axis(list(daily["model_auc"]) + (list(daily["baseline_auc"]) if has_b else []))
+    fig.add_hline(y=0.5, line=dict(color=T.GREY, width=1), annotation_text="coin flip", annotation_position="bottom right",
+                  annotation=dict(font=dict(size=10, color=T.MUTED)))
+    cd = np.stack([daily["n"], daily["delayed15_rate"].fillna(np.nan), daily["model_mae"].fillna(np.nan)], axis=1)
+    fig.add_scatter(x=daily["date"], y=daily["model_auc"], mode="lines+markers", name="model (XGBoost, live)",
+                    line=dict(color=T.AMBER, width=1.5), marker=dict(color=T.AMBER, size=7), customdata=cd,
+                    hovertemplate="%{x} · AUC %{y:.3f}<br>n=%{customdata[0]} · %{customdata[1]:.0%} late · MAE %{customdata[2]:.1f} min<extra></extra>")
+    if has_b:
+        fig.add_scatter(x=daily["date"], y=daily["baseline_auc"], mode="lines+markers", name="airline × hour baseline",
+                        line=dict(color=T.TEAL, width=1.5), marker=dict(color=T.TEAL, size=7),
+                        hovertemplate="%{x} · AUC %{y:.3f}<extra>baseline</extra>")
+    fig.update_layout(title="AUC per day — model vs baseline", yaxis=dict(range=rng, tickvals=ticks, tickformat=".1f"),
+                      xaxis=dict(title="HKT departure date", type="category"), hovermode="x unified")
+    return T.finish(fig, 300)
+
+
+def lead_bucket_bars(buckets: pd.DataFrame) -> go.Figure:
+    """AUC by how far ahead of the actual departure the last score was written. Bars from 0, coin flip marked."""
+    fig = go.Figure()
+    has_b = "baseline_auc" in buckets and buckets["baseline_auc"].notna().any()
+    lbl = [f"{r.label}<br><span style='font-size:10px'>n={int(r.n)}{' · thin' if r.thin else ''}</span>" for r in buckets.itertuples(index=False)]
+    fig.add_bar(x=lbl, y=buckets["model_auc"], name="model (XGBoost, live)", marker_color=T.AMBER, customdata=buckets["n"],
+                hovertemplate="AUC %{y:.3f} · n=%{customdata}<extra>model</extra>", **BAR)
+    if has_b:
+        fig.add_bar(x=lbl, y=buckets["baseline_auc"], name="airline × hour baseline", marker_color=T.TEAL, customdata=buckets["n"],
+                    hovertemplate="AUC %{y:.3f} · n=%{customdata}<extra>baseline</extra>", **BAR)
+    fig.add_hline(y=0.5, line=dict(color=T.GREY, width=1), annotation_text="coin flip", annotation_position="top right",
+                  annotation=dict(font=dict(size=10, color=T.MUTED)))
+    fig.update_layout(title="AUC by lead time — minutes between the last score and the actual departure",
+                      barmode="group", bargap=0.4, bargroupgap=0.08, yaxis=dict(range=[0, 1], tickformat=".2f"),
+                      xaxis=dict(title=""))
+    return T.finish(fig, 300)
 
 
 def importance_hbar(imp: pd.Series, title: str) -> go.Figure:
