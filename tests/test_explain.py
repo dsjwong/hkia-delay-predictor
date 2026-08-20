@@ -57,10 +57,27 @@ def test_explain_frame_stores_top3_with_values_and_is_json_safe():
     top = json.loads(out["top_json"].iloc[0])
     assert len(top) == 3 and [t[0] for t in top][0] == "wx_ts"
     assert all(isinstance(t[0], str) and isinstance(t[2], float) for t in top)
+    assert all(len(t) == 3 for t in top), "no unseen-category flag when every value was seen"
     # values round-trip as plain JSON scalars (numpy ints / pandas categories would not)
     json.dumps(top)
     assert top[0][1] == int(X["wx_ts"].iloc[0])
     assert {t[0] for t in top} <= set(feats)
+
+
+def test_unseen_category_is_labelled_instead_of_reported_missing():
+    """to_matrix maps a category the model never saw to NaN; the card must not then claim the row has no airline."""
+    m, X, feats = _toy_model()
+    tgt = X.copy()
+    tgt["airline"] = "NEW"                     # a carrier that appeared at HKIA after training
+    seen = X.copy()
+    seen["airline"] = pd.Categorical([None] * len(X), categories=["CPA", "HDA"])   # what to_matrix would produce
+    c = E.attribute(m, seen, feats)
+    top = json.loads(E.explain_frame(tgt, seen, c, feats)["top_json"].iloc[0])
+    item = next(t for t in top if t[0] == "airline")
+    assert item[1] == "NEW" and len(item) == 4 and item[3] == 1
+    text = E.why(top, p=0.5)[[t[0] for t in top].index("airline")]["text"]
+    assert text == "NEW: airline not in the model's training data"
+    assert "not on the schedule" not in text
 
 
 def test_pp_conversion_is_the_logistic_slope():
@@ -127,6 +144,11 @@ def test_templates_render_plain_english_for_a_plausible_value():
     assert E.line("airport_sameday_mean_delay", 11.0) == "HKIA is running 11 min late today so far"
     assert E.line("airline_sameday_mean_delay", -3.2) == "this airline is running 3 min early today so far"
     assert E.line("sched_minute_of_day", 1115) == "scheduled at 18:35 HKT"
+    # "the day before", never "yesterday": for a tomorrow flight the referenced day is today
+    assert E.line("airline_prevday_mean_delay", 12.4) == "this airline averaged 12 min late the day before"
+    assert "yesterday" not in E.line("airline_prevday_n", 38)
+    assert E.line("terminal", "t1") == "departs from Terminal 1"
+    assert E.line("metar_age_min", float("inf")).startswith("Observation age =")
     assert E.line("tc_signal", 8) == "tropical-cyclone signal 8 in force"
     assert "Cathay" in E.line("airline", "CPA") and "Taipei" in E.line("dest", "TPE")
 
@@ -174,6 +196,9 @@ def test_storage_keeps_only_the_latest_score_per_flight():
     # a second score of the same flight replaces the row instead of appending one (the DB-growth rule)
     later = now + dt.timedelta(hours=3)
     assert E.write(conn, _tgt("2026-08-20", 0.62, [["wx_ts", 1, 0.5]]), "v1", later, HKT) == 1
+    # a third score with identical p and attributions is not rewritten at all (no churn on the committed db)
+    later2 = now + dt.timedelta(hours=6)
+    assert E.write(conn, _tgt("2026-08-20", 0.62, [["wx_ts", 1, 0.5]]), "v1", later2, HKT) == 0
     rows = conn.execute("SELECT scored_at, p_delay15, top_json FROM explanations").fetchall()
     assert len(rows) == 1
     assert rows[0][0] == later.isoformat(timespec="seconds") and rows[0][1] == 0.62

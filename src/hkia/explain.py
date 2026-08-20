@@ -99,14 +99,30 @@ def _scalar(v: Any) -> Any:
     return None if s in ("nan", "NaT", "None") else s
 
 
+def _item(feature: str, model_v: Any, raw_v: Any, contrib: float) -> list:
+    """One stored attribution: [feature, value, log-odds] — plus a 4th element when the row HAS a value but the model
+    never saw that category (`to_matrix` maps unseen categories to NaN). Without the flag the card would say
+    "operating carrier not on the schedule" about a carrier printed two lines above it."""
+    v, raw = _scalar(model_v), _scalar(raw_v)
+    if v is None and raw is not None:
+        return [feature, raw, round(float(contrib), 5), 1]
+    return [feature, v, round(float(contrib), 5)]
+
+
 def explain_frame(tgt: pd.DataFrame, X: pd.DataFrame, contribs: np.ndarray, features: list[str],
                   k: int = TOP_K) -> pd.DataFrame:
-    """One row per scored flight: p, base_logodds, top_json (top-k [feature, value, logodds]) — ready for `write`."""
+    """One row per scored flight: base_logodds + top_json (top-k [feature, value, logodds]) — ready for `write`.
+
+    `tgt` carries the raw feature values, `X` the matrix the model actually saw; they differ exactly when a category
+    was unseen at training time, which `_item` records rather than hides."""
     order = top_contributions(contribs, features, k)
     base = np.asarray(contribs)[:, len(features)]
     rows = []
     for i, idx in enumerate(order):
-        top = [[features[j], _scalar(X.iloc[i, j]), round(float(contribs[i, j]), 5)] for j in idx]
+        top = [_item(features[j], X.iloc[i, j],
+                     tgt[features[j]].iloc[i] if features[j] in tgt.columns else None,
+                     contribs[i, j])
+               for j in idx]
         rows.append(json.dumps(top, separators=(",", ":"), ensure_ascii=False))
     return pd.DataFrame({"base_logodds": np.round(base, 5), "top_json": rows}, index=tgt.index)
 
@@ -114,14 +130,30 @@ def explain_frame(tgt: pd.DataFrame, X: pd.DataFrame, contribs: np.ndarray, feat
 # ---------------------------------------------------------------- storage
 def write(conn, tgt: pd.DataFrame, version: str, now: dt.datetime, hkt: dt.timezone) -> int:
     """Replace the stored attributions of every scored flight in `tgt` (needs columns base_logodds / top_json).
-    Latest-only by primary key, so re-scoring a flight overwrites its row instead of adding one."""
+
+    Latest-only by primary key, so a re-score overwrites the flight's row instead of adding one. A row whose
+    probability and attributions are byte-identical to the stored one is left alone: an unchanged feature vector
+    produces an identical score, and `hkia.predict.decide` does not store that score either — rewriting it would
+    only churn the committed db (~1 MB/day over 48 cron runs) and would move `scored_at` away from the score in
+    `predictions` that the card displays.
+    """
     conn.executescript(EXPLAIN_SCHEMA)
     if not len(tgt) or "top_json" not in tgt.columns:
         return 0
     scored_at = now.astimezone(dt.timezone.utc).isoformat(timespec="seconds")
-    rows = [(r.date, r.flight_no, r.scheduled_ts.tz_convert(hkt).isoformat(), scored_at, version,
-             float(r.p_delay15), float(r.base_logodds), r.top_json)
-            for r in tgt.itertuples(index=False) if isinstance(r.top_json, str)]
+    dates = sorted({str(d) for d in tgt["date"]})
+    stored = {(d, f, s): (p, tj) for d, f, s, p, tj in conn.execute(
+        f"SELECT date, flight_no, scheduled_ts, p_delay15, top_json FROM explanations "
+        f"WHERE date IN ({','.join('?' * len(dates))})", dates)}
+    rows = []
+    for r in tgt.itertuples(index=False):
+        if not isinstance(r.top_json, str):
+            continue
+        key = (r.date, r.flight_no, r.scheduled_ts.tz_convert(hkt).isoformat())
+        p = float(r.p_delay15)
+        if stored.get(key) == (p, r.top_json):
+            continue
+        rows.append((*key, scored_at, version, p, float(r.base_logodds), r.top_json))
     conn.executemany("INSERT OR REPLACE INTO explanations VALUES (?,?,?,?,?,?,?,?)", rows)
     return len(rows)
 
@@ -189,7 +221,7 @@ TEMPLATES: dict[str, Callable[[Any], str]] = {
     "dest": lambda v: (f"flying to {airport(str(v))[0]} ({v})" if str(v) != "OTHER"
                        else "destination outside the model's top-30 list"),
     "dest_region": lambda v: f"route to {_REGION_NAMES.get(str(v), str(v))}",
-    "terminal": lambda v: (f"departs from Terminal {str(v).removeprefix('T')}" if str(v).upper().startswith("T")
+    "terminal": lambda v: (f"departs from Terminal {str(v).upper().removeprefix('T')}" if str(v).upper().startswith("T")
                            else "no terminal on the schedule"),
     "flt_cat": lambda v: f"conditions at the field {_FLT_CAT.get(str(v), str(v))}",
     # -- calendar
@@ -220,8 +252,10 @@ TEMPLATES: dict[str, Callable[[Any], str]] = {
                             else f"tropical-cyclone signal {_i(v)} in force"),
     "msn_signal": lambda v: "strong monsoon signal in force" if _i(v) else "no monsoon signal in force",
     # -- point-in-time rolling delay stats
-    "airline_prevday_mean_delay": lambda v: f"this airline averaged {_late(v)} yesterday",
-    "airline_prevday_n": lambda v: f"{_i(v)} of this airline's flights had departed yesterday",
+    # "the day before" is the day before *the flight's own date* (features.py keys on prev_date), which for
+    # tomorrow's departures is today — so this must not say "yesterday".
+    "airline_prevday_mean_delay": lambda v: f"this airline averaged {_late(v)} the day before",
+    "airline_prevday_n": lambda v: f"{_i(v)} of this airline's flights had departed the day before",
     "airline_sameday_mean_delay": lambda v: f"this airline is running {_late(v)} today so far",
     "airline_sameday_n": lambda v: f"{_i(v)} of this airline's flights have departed today so far",
     "airport_sameday_mean_delay": lambda v: f"HKIA is running {_late(v)} today so far",
@@ -251,6 +285,11 @@ def _na(feature: str) -> str:
     return MISSING.get(feature, f"no {LABELS.get(feature, feature).lower()} on file for this flight")
 
 
+def _unseen(feature: str, value: Any) -> str:
+    """The row has this value but the model never saw the category, so it scored the flight as if it were unknown."""
+    return f"{value}: {LABELS.get(feature, feature).lower()} not in the model's training data"
+
+
 def line(feature: str, value: Any) -> str:
     """Plain-English one-liner for one (feature, value). Never raises: unknown feature / bad value -> a factual fallback."""
     if value is None or (isinstance(value, float) and math.isnan(value)):
@@ -260,7 +299,7 @@ def line(feature: str, value: Any) -> str:
         return f"{LABELS.get(feature, feature)} = {value}"
     try:
         return fn(value)
-    except (ValueError, TypeError, IndexError, KeyError):
+    except (ValueError, TypeError, IndexError, KeyError, OverflowError):
         return f"{LABELS.get(feature, feature)} = {value}"
 
 
@@ -275,9 +314,11 @@ def why(top: list, p: float, k: int = TOP_K) -> list[dict]:
             feature, value, logodds = item[0], item[1], float(item[2])
         except (TypeError, ValueError, IndexError):
             continue
+        unseen = len(item) > 3 and bool(item[3])
         out.append({"feature": feature, "label": LABELS.get(feature, feature), "value": value,
                     "logodds": round(logodds, 5), "pp": round(to_pp(logodds, p), 2),
-                    "dir": 1 if logodds > 0 else -1, "text": line(feature, value)})
+                    "dir": 1 if logodds > 0 else -1,
+                    "text": _unseen(feature, value) if unseen else line(feature, value)})
     return out
 
 

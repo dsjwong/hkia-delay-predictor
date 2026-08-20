@@ -112,8 +112,8 @@ the model, not the world.** It says how this model's output moves when a feature
 the rain caused the delay, and not what would happen if the weather changed. One hand-written template per feature lives in
 [`src/hkia/explain.py`](src/hkia/explain.py) (all 33 covered, asserted against `docs/features.md` in `tests/test_explain.py`); the top-3
 is stored in table `explanations` — **latest score only**, replaced in place and pruned to a 3-day window, so unlike `predictions` it does
-not grow with the scoring history (~100 bytes/flight, ~65 KB in the DB) — and published as a compact `why` array in
-`departures_*.json` (+85 KB across the three files).
+not grow with the scoring history (~220 bytes/flight, ~330 KB steady state for the three days it keeps) — and
+published as a compact `why` array in `departures_*.json` (+88 KB across the three files, measured on the live export).
 
 ## Known limitations
 - Live scoring uses the **latest METAR observation** as the weather for every future flight (persistence, `metar_age_min` capped at 3 h) — not a forecast; TAF is a stretch. Rolling delay features for future flights only see flights that have departed as of scoring time, a slightly narrower history than at training time.

@@ -177,7 +177,7 @@ def match_departures(ac: pd.DataFrame, deps: pd.DataFrame) -> pd.DataFrame:
     departed within the last 4 h, or still 'scheduled' (db lags the cron) but within 60 nm and ±a few hours of schedule."""
     ac = ac.copy()
     ac["matched"] = False
-    for c in ("flight_no", "destination", "sched_time", "actual_time", "p_delay15", "pred_delay_min", "delay_min", "status", "airline_name"):
+    for c in ("flight_no", "scheduled_ts", "destination", "sched_time", "actual_time", "p_delay15", "pred_delay_min", "delay_min", "status", "airline_name"):
         ac[c] = None
     if ac.empty or deps is None or deps.empty:
         return ac
@@ -213,9 +213,12 @@ def match_departures(ac: pd.DataFrame, deps: pd.DataFrame) -> pd.DataFrame:
         if best is None:
             continue
         r = deps.iloc[best[1]]
-        ac.loc[j, ["matched", "flight_no", "destination", "sched_time", "actual_time", "p_delay15", "pred_delay_min", "delay_min",
-                   "status", "airline_name"]] = [True, r["flight_no"], r["destination"], r["sched_time"], r["actual_time"],
-                                                 r["p_delay15"], r["pred_delay_min"], r["delay_min"], r["status"], r["airline_name"]]
+        # scheduled_ts rides along so the "why" panel can look the flight up by its primary key: `match_departures`
+        # already decided which day this callsign is, and flight numbers repeat across yesterday/today.
+        ac.loc[j, ["matched", "flight_no", "scheduled_ts", "destination", "sched_time", "actual_time", "p_delay15",
+                   "pred_delay_min", "delay_min", "status", "airline_name"]] = [
+            True, r["flight_no"], r["scheduled_ts"], r["destination"], r["sched_time"], r["actual_time"],
+            r["p_delay15"], r["pred_delay_min"], r["delay_min"], r["status"], r["airline_name"]]
     return ac
 
 
@@ -352,28 +355,26 @@ def _render() -> None:
             event = st.dataframe(tbl, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(tbl)),
                                  key="tracked_departures", on_select="rerun", selection_mode="single-row",
                                  column_config={"P(delay>15)": st.column_config.ProgressColumn("P(>15)", min_value=0, max_value=1, format="%.2f")})
-            _why_panel(t, event, deps)
+            _why_panel(t, event)
         else:
             st.caption("No tracked departure inside the 100 nm ring right now — they leave it ~15 min after take-off.")
         st.caption("Match = ICAO airline code + flight number (CPA261 ↔ CX 261); colour = that flight's latest P(delay > 15).")
 
 
-def _why_panel(t: pd.DataFrame, event, deps: pd.DataFrame) -> None:
-    """Top-3 drivers of the selected tracked flight's latest score. `t` is the tracked frame, `deps` the candidate pool
-    (it carries `date` / `scheduled_ts`, which the ADS-B frame does not)."""
-    picked = list(getattr(getattr(event, "selection", None), "rows", []) or [])
+def _why_panel(t: pd.DataFrame, event) -> None:
+    """Top-3 drivers of the selected tracked flight's latest score. `t` is the tracked frame, which carries the
+    matched flight's own `scheduled_ts` — the panel must not re-resolve by flight number, because the candidate pool
+    spans yesterday + today and ~400 numbers appear on both days."""
     st.markdown("#### Why this prediction")
+    # the frame is rebuilt from a live ADS-B frame every 10 s, so a stored row index can outlive the row it named
+    picked = [i for i in (getattr(getattr(event, "selection", None), "rows", []) or []) if 0 <= i < len(t)]
     if not picked:
         st.caption("Select a tracked departure above to see the three features that moved its P(delay > 15) the most.")
         return
-    fn = t.iloc[picked[0]]["flight_no"]
-    row = deps[deps["flight_no"] == fn]
-    if row.empty:
-        st.caption("That flight is no longer in today's schedule snapshot.")
-        return
-    r = row.iloc[-1]
-    date = r["sched_hkt"].date().isoformat()      # flights.date == the HKT calendar day of the scheduled departure
-    rows = D.explanations(date).get((r["flight_no"], r["scheduled_ts"]), [])
+    r = t.iloc[picked[0]]
+    sched = str(r["scheduled_ts"])
+    date = sched[:10]                            # flights.date == the HKT calendar day of the scheduled departure
+    rows = D.explanations(date).get((r["flight_no"], sched), [])
     st.caption(f"**{r['flight_no']}** → {r['destination']} · scheduled {r['sched_time']} HKT")
     T.why_lines(rows, empty="No attribution stored for this flight — they are kept for flights that have not departed yet.")
     if rows:

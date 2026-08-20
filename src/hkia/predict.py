@@ -112,9 +112,15 @@ def score(conn, models: dict, dates: list[str], include_departed: bool = False,
         return tgt.assign(p_delay15=np.nan, pred_delay_min=np.nan, features_hash="")
     X, _ = to_matrix(tgt, clf["cats"], clf["features"])
     tgt["p_delay15"] = clf["model"].predict_proba(X)[:, 1].round(4)
-    # same forward pass, one extra booster call: local SHAP contributions for the "why this prediction" block
-    contribs = explain.attribute(clf["model"], X, clf["features"])
-    tgt[["base_logodds", "top_json"]] = explain.explain_frame(tgt, X, contribs, clf["features"])
+    # same forward pass, one extra booster call: local SHAP contributions for the "why this prediction" block.
+    # Explanations are a nice-to-have on top of the score, so they must not be able to fail the scoring run: an
+    # xgboost API change (requirements-ml pins only >=2.1) or a feature reorder would otherwise stop predictions
+    # entirely, and ingest.yml would still commit + export the stale ones.
+    try:
+        contribs = explain.attribute(clf["model"], X, clf["features"])
+        tgt[["base_logodds", "top_json"]] = explain.explain_frame(tgt, X, contribs, clf["features"])
+    except Exception:  # noqa: BLE001 — scoring continues without the "why" block
+        log.exception("attribution failed; scoring continues without explanations")
     Xr, _ = to_matrix(tgt, models["reg"]["cats"], models["reg"]["features"])
     tgt["pred_delay_min"] = models["reg"]["model"].predict(Xr).round(1)
     tgt["features_hash"] = [hashlib.md5(json.dumps([None if (isinstance(v, float) and np.isnan(v)) else v for v in row],
@@ -182,14 +188,18 @@ def write_predictions(conn, tgt: pd.DataFrame, version: str, now: dt.datetime, d
     return len(rows)
 
 
-def write_explanations(conn, tgt: pd.DataFrame, version: str, now: dt.datetime) -> tuple[int, int]:
+def write_explanations(conn, tgt: pd.DataFrame, version: str, now: dt.datetime,
+                       prune_old: bool = True) -> tuple[int, int]:
     """Store the top-3 SHAP attributions of every scored flight, then prune old dates. Returns (written, pruned).
 
     Unlike `predictions` this table is **latest-only** (primary key without `scored_at`): a re-score replaces the row, so the
     table stays at ~3 days of schedule no matter how often the cron runs. See `hkia.explain`.
+
+    `prune_old=False` for an explicit `--date` run, which may target a day outside the rolling window — pruning there
+    would delete the rows the same call just wrote.
     """
     written = explain.write(conn, tgt, version, now, HKT)
-    pruned = explain.prune(conn, now, HKT)
+    pruned = explain.prune(conn, now, HKT) if prune_old else 0
     conn.commit()
     return written, pruned
 
@@ -207,8 +217,8 @@ def main(argv=None):
     conn = connect()
     tgt = score(conn, models, target_dates(a.date, now), a.include_departed, now)
     n = write_predictions(conn, tgt, models["version"], now, dedupe=not a.no_dedupe)
-    n_why = write_explanations(conn, tgt, models["version"], now)
-    log.info("explanations: %d rows replaced (latest only), %d pruned (kept the last %d days + tomorrow)", *n_why, explain.KEEP_DAYS)
+    n_why = write_explanations(conn, tgt, models["version"], now, prune_old=not a.date)
+    log.info("explanations: %d rows written (latest only, unchanged ones skipped), %d pruned outside yesterday..tomorrow", *n_why)
     if len(tgt):
         p = tgt["p_delay15"]
         log.info("scored %d flights, wrote %d rows (model %s); p_delay15 mean %.3f, quantiles 10/50/90 = %.3f/%.3f/%.3f, "
