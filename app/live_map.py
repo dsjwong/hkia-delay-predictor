@@ -22,6 +22,7 @@ import streamlit as st
 
 import data as D
 import theme as T
+from hkia import explain as E
 
 HKIA_LAT, HKIA_LON, RADIUS_NM = 22.308, 113.918, 100
 UA = {"User-Agent": "hkia-delay-predictor (github.com/dsjwong/hkia-delay-predictor)"}
@@ -345,11 +346,35 @@ def _render() -> None:
         T.badges(*wb)
         st.markdown("#### Tracked departures")
         if matched is not None and n_tr:
-            t = matched[matched["matched"]].sort_values("sched_time")
+            t = matched[matched["matched"]].sort_values("sched_time").reset_index(drop=True)
             tbl = pd.DataFrame({"Sched": t["sched_time"], "Flight": t["flight_no"], "To": t["destination"],
                                 "P(delay>15)": pd.to_numeric(t["p_delay15"], errors="coerce")})
-            st.dataframe(tbl, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(tbl)),
-                         column_config={"P(delay>15)": st.column_config.ProgressColumn("P(>15)", min_value=0, max_value=1, format="%.2f")})
+            event = st.dataframe(tbl, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(tbl)),
+                                 key="tracked_departures", on_select="rerun", selection_mode="single-row",
+                                 column_config={"P(delay>15)": st.column_config.ProgressColumn("P(>15)", min_value=0, max_value=1, format="%.2f")})
+            _why_panel(t, event, deps)
         else:
             st.caption("No tracked departure inside the 100 nm ring right now — they leave it ~15 min after take-off.")
         st.caption("Match = ICAO airline code + flight number (CPA261 ↔ CX 261); colour = that flight's latest P(delay > 15).")
+
+
+def _why_panel(t: pd.DataFrame, event, deps: pd.DataFrame) -> None:
+    """Top-3 drivers of the selected tracked flight's latest score. `t` is the tracked frame, `deps` the candidate pool
+    (it carries `date` / `scheduled_ts`, which the ADS-B frame does not)."""
+    picked = list(getattr(getattr(event, "selection", None), "rows", []) or [])
+    st.markdown("#### Why this prediction")
+    if not picked:
+        st.caption("Select a tracked departure above to see the three features that moved its P(delay > 15) the most.")
+        return
+    fn = t.iloc[picked[0]]["flight_no"]
+    row = deps[deps["flight_no"] == fn]
+    if row.empty:
+        st.caption("That flight is no longer in today's schedule snapshot.")
+        return
+    r = row.iloc[-1]
+    date = r["sched_hkt"].date().isoformat()      # flights.date == the HKT calendar day of the scheduled departure
+    rows = D.explanations(date).get((r["flight_no"], r["scheduled_ts"]), [])
+    st.caption(f"**{r['flight_no']}** → {r['destination']} · scheduled {r['sched_time']} HKT")
+    T.why_lines(rows, empty="No attribution stored for this flight — they are kept for flights that have not departed yet.")
+    if rows:
+        st.caption(E.FOOTER)
