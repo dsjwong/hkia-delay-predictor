@@ -25,6 +25,15 @@ jobs:
       - name: Weather backfill (IEM METAR history + HKO TC signals; incremental, non-fatal on IEM 503)
         run: PYTHONPATH=src python -m hkia.backfill_weather
         continue-on-error: true
+      - name: Arrivals backfill (only window days that are missing or thin — self-heals gaps, ~0 requests when complete)
+        run: PYTHONPATH=src python -m hkia.ingest_arrivals --fill-gaps
+        continue-on-error: true
+      - name: Rebuild aircraft_links over the whole window (stand_gate proxy + any ADS-B history; idempotent)
+        run: PYTHONPATH=src python -m hkia.rotations --all
+        continue-on-error: true
+      - name: Inbound-link coverage report
+        run: PYTHONPATH=src python -m hkia.rotations --coverage
+        continue-on-error: true
       - name: Compact predictions (first / latest / one per hour per flight; idempotent) + VACUUM
         run: PYTHONPATH=src python -m hkia.compact_predictions
       - name: Live evaluation report
