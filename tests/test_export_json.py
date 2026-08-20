@@ -26,3 +26,8 @@ def test_export_writes_all_files(fixture_db, tmp_path):
     assert wx["metar"]["flt_cat"] == "VFR" and wx["hko_warnings"][0]["code"] == "WHOT"
     model = json.loads((out / "model.json").read_text())
     assert "live_eval" in model and model["live_eval"]["n_matured"] == 120 and len(model["limitations"]) >= 4
+    ev = model["live_eval"]  # the report-card slices ride along in model.json (kept small: the whole file is < 100 KB)
+    assert sizes["model.json"] < 100_000
+    assert {"daily", "lead_buckets", "calibration", "notable", "deltas"} <= set(ev)
+    assert sum(r["n"] for r in ev["daily"]) == ev["n_matured"] == sum(b["n"] for b in ev["lead_buckets"])
+    assert len(ev["notable"]["confident_correct"]) == 5 and len(ev["notable"]["worst_misses"]) == 5
