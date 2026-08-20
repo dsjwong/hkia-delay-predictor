@@ -19,8 +19,9 @@ export interface CalBin {
   obs_rate: number
 }
 
-/** Reliability diagram: mean predicted P per bin vs observed rate; marker size ~ bin count; diagonal = perfect calibration. */
-export function Reliability({ bins }: { bins: CalBin[] }) {
+/** Reliability diagram: mean predicted P per bin vs observed rate; marker size ~ bin count; diagonal = perfect calibration.
+ *  `label` names the series because the same chart draws the held-out test bins and the live ones. */
+export function Reliability({ bins, label = 'XGBoost (test)' }: { bins: CalBin[]; label?: string }) {
   const data = bins.map((b) => ({
     ...b,
     x: b.pred_mean,
@@ -31,7 +32,7 @@ export function Reliability({ bins }: { bins: CalBin[] }) {
     <div>
       <Legend
         items={[
-          { color: SERIES_1, label: 'XGBoost (test) · marker size ~ bin count', shape: 'dot' },
+          { color: SERIES_1, label: `${label} · marker size ~ bin count`, shape: 'dot' },
           { color: NEUTRAL, label: 'perfect calibration', shape: 'line' },
         ]}
       />

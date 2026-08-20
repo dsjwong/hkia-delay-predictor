@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, TrendingUp, X } from 'lucide-react'
 import { useAdsb } from '@/hooks/useAdsb'
-import { useDepartures } from '@/lib/data'
+import { beatsBaselineText } from '@/components/ReportCard'
+import { useDepartures, useModel } from '@/lib/data'
 import { useMetaCtx } from '@/lib/meta-context'
 import { POLL_MS, PROXY_POLL_MS, RADIUS_NM } from '@/lib/adsb'
 import { hm } from '@/lib/time'
@@ -34,6 +36,8 @@ export default function Live() {
   const today = useDepartures('today')
   const yday = useDepartures('yesterday')
   const feed = useAdsb(true)
+  const model = useModel()
+  const scorecard = beatsBaselineText(model.data?.live_eval)
   const now = useNow()
   const [selected, setSelected] = useState<string | null>(null)
   const [selFlight, setSelFlight] = useState<Flight | null>(null)
@@ -103,6 +107,20 @@ export default function Live() {
               {feedText}
             </span>
           </Tooltip>
+          {scorecard && (
+            <Tooltip
+              side="bottom"
+              content="Rolling 7-day live evaluation: for every flight that has since departed, the last probability published before it left, scored against what actually happened, versus the airline × hour lookup table. Open the model report card for the daily series, lead-time slices, calibration and the notable calls."
+            >
+              <Link
+                to="/model"
+                className="hk-glass inline-flex items-center gap-1.5 h-8 px-2.5 text-[0.72rem] whitespace-nowrap text-accent no-underline hover:border-border-2"
+              >
+                <TrendingUp size={12} aria-hidden="true" />
+                <span className="hk-num">{scorecard}</span>
+              </Link>
+            </Tooltip>
+          )}
         </div>
 
         {/* bottom-left: legend (above the attribution) */}
