@@ -2,10 +2,13 @@
 
 Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live web app: https://dsjwong.github.io/hkia-delay-predictor/** (static React, GitHub Pages) · **Streamlit dashboard: https://hkia-delays.streamlit.app** (fallback) — a live aircraft map around HKIA (ADS-B) with today's departures highlighted by predicted delay, today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
 
+> **In production the model beats the airline × hour baseline: AUC 0.663 vs 0.647 over the last 7 days, n = 1,402 matured predictions — see the live report card** ([web app](https://dsjwong.github.io/hkia-delay-predictor/#/model) · [Streamlit](https://hkia-delays.streamlit.app/?page=Model) · [`reports/live-eval.md`](reports/live-eval.md)). Not a back-test: for every flight that has since departed, the *last probability the site published before it left*, graded against what actually happened. The margin is modest (+0.017 AUC, Brier −0.005, MAE −2.8 min) over a lookup table, and the window is only a few days long — the point is that the model grades itself in public and shows the slices where it does badly.
+
 - **What**: for each HKIA passenger departure, predict P(delay > 15 min) / expected delay minutes, served on a public dashboard with honest evaluation numbers. v1 = departures only.
 - **Data** (3 sources, all free): Airport Authority flight info API via data.gov.hk (scheduled vs actual departure = label; ~91-day rolling history), Hong Kong Observatory open data (current readings, warnings incl. typhoon signals), METAR for VHHH from aviationweather.gov. OpenSky ADS-B is a deferred stretch.
 - **Architecture** (cron → ingest → predict → db → api / JSON → static site): GitHub Actions every 30 min (`ingest.yml`, $0) runs `src/hkia/ingest_*.py` (flights incl. tomorrow's schedule, HKO readings/warnings, live METAR) into SQLite `data/hkia.db`, then `predict.py` scores every not-yet-departed flight for today + tomorrow with the models in `models/` and appends to table `predictions` (re-scored only when the feature vector changes; history kept), then `export_json.py` writes the JSON snapshots the web app reads. A daily job (`backfill.yml`) runs `backfill_weather.py` (incremental IEM METAR history + HKO typhoon-signal db) and `evaluate.py` (last score before departure vs actual → `reports/live-eval.md`). `features.py` is the single feature builder for training and inference (33 features, point-in-time rolling stats, as-of weather join); `train.py` fits baselines + XGBoost on a date-ordered split → `models/`, `reports/M2-results.md`. `api.py` (FastAPI, read-only over the DB) serves the schedule + latest predictions; `app/streamlit_app.py` (Streamlit) is the public dashboard reading the same DB.
 - **Headline numbers (test = last 14 days, 2026-08-03..16, 6,252 departures)**: P(delay > 15 min) AUC **0.661** (XGBoost) vs 0.623 (airline x hour baseline) vs 0.50 (global rate); log loss 0.575 / 0.585 / 0.604. Delay-minutes MAE **16.6** vs 18.5 (baseline) vs 17.4 (train median). Airline + destination + time of day explain most; weather adds ~+0.013 AUC; the point-in-time rolling delay features do not help AUC on test. Full tables, calibration and ablations: `reports/M2-results.md`; feature dictionary: `docs/features.md`.
+- **Live numbers (rolling 7 days, 2026-08-17..20, 1,402 matured predictions)**: AUC **0.6635** (model) vs 0.6466 (airline × hour baseline) vs 0.50 (naive); Brier 0.1681 vs 0.1734; log loss 0.5148 vs 0.5271; delay-minutes MAE **14.6** vs 17.4. Median lead time between the last score and the actual departure: 25.6 min. Honest about the slices: per day the model ranges 0.58–0.71 and is *behind* the baseline on 2 of the 4 days so far; by lead time it is 0.697 under 30 min out and 0.619 at 30–120 min (n = 811 / 560), and the > 12 h bucket is empty because a flight is almost always re-scored closer in. Full breakdown, live calibration and the notable calls: `reports/live-eval.md` and the report card in both apps.
 - **Recon findings**: see `docs/M0-data-recon.md` (URLs, fields, historical depth, gotchas). Headline: ~450 departures/day, 91 days back → ~40k labelled departures on first backfill.
 
 ## Run
@@ -17,7 +20,7 @@ python3 -m venv .venv && .venv/bin/pip install -e .      # runtime (requirements
 .venv/bin/python -m hkia.features                        # -> data/features.parquet (not committed)
 .venv/bin/python -m hkia.train                           # -> models/*.joblib, models/MANIFEST.json, reports/M2-results.md
 .venv/bin/python -m hkia.predict                         # score today+tomorrow -> table predictions (what the cron does every 30 min)
-.venv/bin/python -m hkia.evaluate                        # predictions vs actuals, rolling 7 days -> reports/live-eval.md
+.venv/bin/python -m hkia.evaluate                        # predictions vs actuals, rolling 7 days (+ daily / lead-time / calibration / notable slices) -> reports/live-eval.md
 .venv/bin/python -m hkia.export_json                     # JSON snapshots for the static web app -> web/public/data/ (what the cron does after predict)
 .venv/bin/uvicorn hkia.api:app --reload                  # http://127.0.0.1:8000/docs
 .venv/bin/streamlit run app/streamlit_app.py            # dashboard, http://localhost:8501 (needs only requirements.txt)
@@ -32,7 +35,7 @@ The committed `data/hkia.db` carries the live tables, the weather backfill table
 | `GET /health` | db path, table counts, freshness of flights / METAR / predictions |
 | `GET /departures?date=YYYY-MM-DD` | HKT day's departures: schedule, status (`scheduled`/`departed`/`cancelled`), actual delay, latest prediction (`p_delay15`, `pred_delay_min`, `model_version`, `scored_at`) |
 | `GET /flight/{flight_no}?date=` | one flight (`CX 255` or `cx255`) incl. its full prediction history for the day |
-| `GET /model` | `models/MANIFEST.json` + rolling live-evaluation numbers (honest "not enough matured predictions yet" until the cron has run for a while) |
+| `GET /model` | `models/MANIFEST.json` + the rolling live-evaluation numbers, including the report-card slices (daily series, lead-time buckets, live calibration, notable flights, baseline deltas); still honest with "not enough matured predictions yet" on a fresh database |
 | `GET /weather/latest` | latest METAR + latest HKO current readings and warnings |
 
 ### Dashboard (`streamlit run app/streamlit_app.py`)
@@ -43,7 +46,7 @@ Five pages in a neutral zinc-dark design system (shadcn/ui-style tokens, Inter, 
 | Live map (landing) | every aircraft within 100 nm of VHHH from a free ADS-B provider chain — [adsb.lol](https://api.adsb.lol/) → [OpenSky](https://opensky-network.org/) anonymous bbox → [adsb.fi](https://adsb.fi/) → [airplanes.live](https://airplanes.live/), first non-empty wins (adsb.lol returns an empty list from Streamlit Cloud's egress IP, so OpenSky usually serves there; refresh 10 s for the readsb family, 30 s for OpenSky; status badge names the provider + fetch age, last good frame kept when everything is empty; plane icons rotated by track, zinc→white by altitude), with **today's HKIA departures highlighted** — matched by ICAO airline code + flight number (`CPA261` ↔ `CX 261`), coloured by their latest P(delay > 15) on an amber ramp, tooltip with flight / destination / sched / actual / P / predicted minutes; side panel with counts, tracked-departure table, METAR + HKO warning strip; falls back to the last good frame if the feed is down |
 | Today | date picker (today / tomorrow / back 90 days), metric tiles (flights, predicted share > 15 min late, observed so far, METAR, HKO warnings / TC signal), timeline strip of every scored flight (scheduled time × P, departed vs pending), predicted-vs-observed late share by hour, filterable table (airline, hour range, not-yet-departed) with P(delay > 15) as a progress bar, predicted minutes and — for departed flights — actual delay and a hit/miss mark |
 | Patterns | 91-day history: hour × weekday heatmap (mean delay or % > 15), ranked bars for airlines (share > 15, n ≥ 50, top 15) and top destinations (mean delay), small multiples of delay by hour for the top 4 airlines, typhoon-days callout, mean delay per day with TC-signal days highlighted; full tables in an expander |
-| Model | M2 test metrics as tiles (AUC / Brier / log loss / MAE vs the airline × hour baseline, full table in an expander), reliability diagram, gain feature importance, ablation, **live evaluation** (rolling 7-day AUC/Brier/MAE once ≥ 100 matured predictions), how-to-read + limitations |
+| Model | leads with the **live report card** — AUC / Brier / MAE tiles with the signed delta against the airline × hour baseline, AUC per day (model vs baseline), AUC by lead-time bucket, calibration on live data, and the notable flights of the week (most confident correct calls, biggest misses in both directions) — then the M2 held-out test metrics, reliability diagram, gain feature importance, ablation, the full live metric table and limitations |
 | About | 10-line architecture, data sources, repo, author |
 
 Palette (validated with the dataviz skill's `validate_palette.js` on the `#09090b` surface): categorical `#c9820c #3d87e0 #14a88d #9b6fe0` (adjacent pairs PASS, worst CVD ΔE 14.0; first three all-pairs PASS), P(delay) amber ramp `#6b4608 → #ffbf3d` (ordinal PASS), heatmap zinc ramp `#45454c → #ececef` (PASS); status colours reserved for badges. Amber = the model's prediction, zinc = observed / other.
@@ -59,7 +62,8 @@ Live map data: community ADS-B feeds (adsb.lol, OpenSky, adsb.fi, airplanes.live
 
 ## Web app (GitHub Pages) — https://dsjwong.github.io/hkia-delay-predictor/
 A static React app in `web/` (Vite + React 19 + TypeScript + Tailwind 4, shadcn-style primitives, Inter, MapLibre GL + deck.gl, Recharts),
-hosted on GitHub Pages with **no backend**: the same five pages as the Streamlit dashboard (Live map · Today · Patterns · Model · About) in a
+hosted on GitHub Pages with **no backend**: the same five pages as the Streamlit dashboard (Live map · Today · Patterns · Model · About — the
+Model route leads with the live report card, and the Live map header carries a chip with the current live margin that links to it) in a
 neutral zinc dark design system — amber reserved for P(delay > 15), floating glass panels over a full-height live map, KPI tiles + card grids
 elsewhere — hash-routed, mobile-responsive (bottom tabs), keyboard-accessible, skeleton/empty states and tooltips everywhere. Tokens, type
 scale, colour meaning and the library decision: [`docs/design.md`](docs/design.md).
@@ -68,7 +72,8 @@ scale, colour meaning and the library decision: [`docs/design.md`](docs/design.m
 (~600 KB total) to `web/public/data/` — `meta.json` (data-as-of, last score/METAR, counts, airline names, IATA→ICAO map, airport cities),
 `departures_{yesterday,today,tomorrow}.json` (every flight + latest prediction + a short prediction history), `patterns.json` (hour × weekday
 heatmap, airline/destination tables, daily series with TC-signal flags, typhoon stats), `model.json` (M2 metrics, calibration bins, feature
-importance, ablation, live-eval numbers, interpretation, limitations), `weather.json` (latest METAR, HKO warnings, TC signal) — and commits
+importance, ablation, the whole live report card under `live_eval` — headline metrics, daily series, lead-time buckets, live calibration,
+notable flights, baseline deltas — interpretation, limitations; 11 KB), `weather.json` (latest METAR, HKO warnings, TC signal) — and commits
 them with the DB. The deployed page fetches those files straight from `raw.githubusercontent.com/…/main/web/public/data/` (CORS `*`, 5-min CDN
 cache), so **fresh data needs no rebuild**; the copy bundled into the Pages artifact under `/data/` is the offline fallback. `pages.yml` rebuilds
 and deploys only when `web/**` changes in a human push (bot pushes with `GITHUB_TOKEN` never trigger workflows — by design here).
@@ -85,7 +90,7 @@ public proxy `api.cors.lol` (rate-limited to ~1 request/min, polled every 60 s �
 basemap, rings, the recent-departures list and a notice explaining how to enable the feed. ADS-B is display only, never a model input.
 
 Develop / build / test: `cd web && npm ci && npm run dev` (data from `web/public/data/`), `npm test` (vitest: callsign matching, dead-reckoning,
-feed fallback, JSON loaders, app shell), `npm run lint`, `npm run build` (→ `web/dist/`, `tsc -b` must be clean). Deploy details and the Pages
+feed fallback, JSON loaders, app shell, the live report card incl. its empty states), `npm run lint`, `npm run build` (→ `web/dist/`, `tsc -b` must be clean). Deploy details and the Pages
 one-time setup: [`docs/deploy.md`](docs/deploy.md).
 
 ![Web app — live map](docs/img/web-live.jpg)
