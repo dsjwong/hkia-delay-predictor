@@ -88,6 +88,26 @@ def test_today_page_renders():
     assert {"Flight", "Airline", "P(delay>15)", "Pred delay (min)", "Actual delay (min)"} <= cols
 
 
+def test_today_page_explains_the_selected_flight():
+    """The 'why this prediction' block: a prompt with nothing selected, the flight's own lines once a row is picked."""
+    at = _run("today")
+    assert any("Why this prediction" in m.value for m in at.markdown)
+    assert any("Select a row in the table above" in c.value for c in at.caption)
+    df = at.dataframe[0].value
+    rows = [i for i, s in enumerate(df["Status"]) if s == "scheduled"] or [0]
+    at.session_state["today_flights"] = {"selection": {"rows": [rows[0]], "columns": []}}
+    at = at.run()
+    assert not at.exception, [str(e) for e in at.exception]
+    flight = df["Flight"].iloc[rows[0]]
+    assert any(flight in c.value for c in at.caption), "the block should name the selected flight"
+    why = [m.value for m in at.markdown if '<div class="hk-why">' in m.value]
+    if why:  # a db written by a scoring run that includes hkia.explain
+        assert why[0].count('<div class="hk-why">') == 3 and "pp</span>" in why[0]
+        assert any("explain the model, not the world" in c.value for c in at.caption)
+    else:    # older db without the explanations table -> honest empty state, never a crash
+        assert any("No attribution stored" in c.value for c in at.caption)
+
+
 def test_patterns_page_renders():
     at = _run("patterns")
     assert any("Delay patterns" in m.value for m in at.markdown)

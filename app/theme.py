@@ -11,6 +11,8 @@ Colour meaning: amber = P(delay > 15) / the model's prediction; zinc = observed 
 """
 from __future__ import annotations
 
+from html import escape
+
 import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
@@ -175,6 +177,12 @@ div[data-testid="stMetricDelta"] svg {{ display: none; }}
 .hk-badge.crit {{ border-color: rgba(239,68,68,0.5); color: {CRITICAL}; }}
 .hk-badge.ok {{ border-color: rgba(34,197,94,0.4); color: {GOOD}; }}
 .hk-badge.accent {{ border-color: rgba(245,158,11,0.45); color: {ACCENT}; }}
+/* "why this prediction" rows: arrow glyph (amber = pushed P up, teal = pushed it down) + one-liner + probability points */
+.hk-why {{ display:flex; align-items:baseline; gap: 10px; padding: 6px 2px; border-bottom: 1px solid {BORDER}; font-size: 0.86rem; }}
+.hk-why:last-of-type {{ border-bottom: none; }}
+.hk-why .ar {{ font-size: 0.66rem; line-height: 1; width: 10px; }}
+.hk-why .tx {{ flex: 1; color: {INK}; line-height: 1.45; }}
+.hk-why .pp {{ font-family: {MONO}; font-size: 0.74rem; color: {MUTED}; white-space: nowrap; }}
 /* legend strip */
 .hk-legend {{ display:flex; gap: 20px; align-items:center; flex-wrap: wrap; font-size: 0.74rem; color: {INK_2}; margin: 8px 0 0 0; }}
 .hk-legend .sw {{ display:inline-block; width: 56px; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }}
@@ -238,3 +246,20 @@ def badge(text: str, kind: str = "") -> str:
 
 def badges(*items: str) -> None:
     st.markdown('<div class="hk-badges">' + "".join(items) + "</div>", unsafe_allow_html=True)
+
+
+def why_lines(rows: list[dict], empty: str = "") -> None:
+    """"Why this prediction": one line per attribution — arrow glyph + plain-English reason + signed probability points.
+
+    Direction is carried by the glyph and the sign as well as the colour (amber up / teal down), never by colour alone.
+    `rows` are `hkia.explain.why()` dicts; an empty list renders the caption in `empty`.
+    """
+    if not rows:
+        st.caption(empty or "No attribution stored for this flight yet.")
+        return
+    html = []
+    for r in rows:
+        up = r["dir"] > 0
+        html.append(f'<div class="hk-why"><span class="ar" style="color:{AMBER if up else TEAL}">{"▲" if up else "▼"}</span>'
+                    f'<span class="tx">{escape(str(r["text"]))}</span><span class="pp">{r["pp"]:+.1f} pp</span></div>')
+    st.markdown("".join(html), unsafe_allow_html=True)

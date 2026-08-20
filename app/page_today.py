@@ -10,6 +10,7 @@ import streamlit as st
 import charts as C
 import data as D
 import theme as T
+from hkia import explain as E
 
 
 def _metar_parts(m: dict | None) -> tuple[str, str]:
@@ -100,11 +101,29 @@ def render(fresh: dict) -> None:
         "Pred delay (min)": v["pred_delay_min"], "Actual delay (min)": v["delay_min"],
         "Hit?": v["hit"].map({True: "✓", False: "✗"}).fillna(""), "Gate": v["gate"].fillna(""), "Codeshares": v["codeshares"].fillna(""),
     })
-    st.dataframe(
-        tbl, width="stretch", hide_index=True, height=min(700, 38 + 35 * len(tbl)),
+    event = st.dataframe(
+        tbl, width="stretch", hide_index=True, height=min(700, 38 + 35 * len(tbl)), key="today_flights",
+        on_select="rerun", selection_mode="single-row",
         column_config={
             "P(delay>15)": st.column_config.ProgressColumn("P(delay > 15 min)", min_value=0, max_value=1, format="%.2f"),
             "Pred delay (min)": st.column_config.NumberColumn(format="%.0f"),
             "Actual delay (min)": st.column_config.NumberColumn(format="%+.0f"),
         })
     st.caption("P(delay > 15) is a probability, not a verdict — 30 % means ~3 in 10 such flights leave > 15 min late. Future flights use the latest METAR, not a forecast.")
+    _why_section(date.isoformat(), v, event)
+
+
+def _why_section(date: str, v: pd.DataFrame, event) -> None:
+    """Top-3 drivers of the selected flight's latest score (pick a row in the table above)."""
+    st.markdown("#### Why this prediction")
+    picked = list(getattr(getattr(event, "selection", None), "rows", []) or [])
+    if not picked:
+        st.caption("Select a row in the table above to see the three features that moved that flight's P(delay > 15) the most.")
+        return
+    r = v.iloc[picked[0]]
+    rows = D.explanations(date).get((r["flight_no"], r["scheduled_ts"]), [])
+    st.caption(f"**{r['flight_no']}** → {r['destination']} · scheduled {r['sched_time']} HKT · "
+               + ("not scored yet" if pd.isna(r["p_delay15"]) else f"P(delay > 15) = {r['p_delay15']:.0%}"))
+    T.why_lines(rows, empty="No attribution stored for this flight — they are kept for flights that have not departed yet.")
+    if rows:
+        st.caption(E.FOOTER)

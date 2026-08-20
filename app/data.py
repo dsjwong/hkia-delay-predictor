@@ -28,6 +28,7 @@ TTL = 600
 DELAY_MIN, DELAY_MAX = -60, 600  # same outlier clip as hkia.features
 HISTORY_DAYS = 91
 
+from hkia import explain  # noqa: E402  (templates only — the attribution half imports xgboost lazily)
 from hkia.airlines import AIRLINE_NAMES  # noqa: E402  (shared with hkia.export_json)
 
 
@@ -109,6 +110,16 @@ def departures(date: str) -> pd.DataFrame:
     df["hit"] = np.where(df["delay_min"].notna() & df["p_delay15"].notna(),
                          (df["p_delay15"] >= 0.5) == (df["delay_min"] > 15), None)
     return df
+
+
+@st.cache_data(ttl=TTL)
+def explanations(date: str) -> dict[tuple[str, str], list[dict]]:
+    """(flight_no, scheduled_ts) -> top-3 attributions of that flight's latest score (`hkia.explain.why` rows).
+
+    Table `explanations` holds the latest score only, for a 3-day window; {} before the first scoring run writes it.
+    """
+    with _conn() as c:
+        return explain.load(c, date)
 
 
 @st.cache_data(ttl=TTL)
