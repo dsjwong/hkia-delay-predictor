@@ -255,3 +255,152 @@ export interface Weather {
     rainfall_max_mm?: number | null
   } | null
 }
+
+/* ------------------------------------------------------------------ case_noul.json (src/hkia/case_study.py)
+ * Static history: five fixed days of July 2026, generated once by `python -m hkia.case_study` and committed.
+ * The ingest cron does NOT rewrite it, so unlike the other snapshots this one never changes between deploys. */
+
+export interface CaseSignal {
+  signal: number
+  direction: string | null
+  start: string
+  end: string
+  hours: number
+}
+
+/** One clock hour of the window; `mean_delay` is null when nothing departed that hour. */
+export interface CaseHour {
+  t: string
+  signal: number
+  n_sched: number
+  n_departed: number
+  n_cancelled: number
+  n_labelled: number
+  mean_delay: number | null
+  p90_delay: number | null
+  max_delay: number | null
+  wspd_kt: number | null
+  wgst_kt: number | null
+  visib_sm: number | null
+  flt_cat: string | null
+  wx: string | null
+}
+
+export interface CaseTotals {
+  n: number
+  n_cancelled: number
+  cancel_rate: number | null
+  n_labelled: number
+  n_over_clip: number
+  mean_delay: number | null
+  median_delay: number | null
+  p90_delay: number | null
+  pct15: number | null
+}
+
+export interface CaseWorstFlight {
+  flight_no: string
+  airline: string | null
+  airline_name: string
+  dest: string
+  dest_city: string
+  sched_ts: string
+  actual_ts: string
+  delay_min: number
+  signal: number
+  /** beyond the [-60, 600] min clip used for every average in the repo */
+  over_clip: boolean
+}
+
+/** One slice of the retrospective. Read `mean_pred_delay` against `mean_obs_delay`: that gap is the story. */
+export interface CaseRetroBlock {
+  n: number
+  obs_rate: number | null
+  mean_p: number | null
+  pct_flagged: number | null
+  auc: number | null
+  brier: number | null
+  mae: number | null
+  mean_pred_delay: number | null
+  mean_obs_delay: number | null
+}
+
+export interface CaseStudy {
+  generated_at: string
+  regenerate: string
+  static: boolean
+  note: string
+  episode: {
+    tc_id: string
+    name: string
+    peak_signal: number
+    first_signal: string | null
+    all_clear: string | null
+    sequence: string
+    signals: CaseSignal[]
+  }
+  window: { start: string; end: string; tz: string; days: string[] }
+  other_episodes: {
+    tc_id: string
+    name: string | null
+    peak_signal: number
+    start: string
+    end: string
+    kind: string
+  }[]
+  /** strong-monsoon rows share one tc_id, so they are counted rather than listed as a single bogus span */
+  other_monsoon: { n: number; date_min: string; date_max: string } | null
+  headline: {
+    peak_signal: number
+    n_flights_window: number
+    n_flights_episode: number
+    n_cancelled_episode: number
+    cancel_rate_episode: number | null
+    peak_hour: string | null
+    peak_hour_mean_delay: number | null
+    peak_hour_n: number | null
+    peak_gust_kt: number | null
+    min_visib_sm: number | null
+    hours_to_recover: number | null
+    n_hours_no_departures: number
+  }
+  hourly: CaseHour[]
+  by_signal: ({ signal: number } & CaseTotals)[]
+  baseline: { label: string; date_min: string; date_max: string; n_days: number } & CaseTotals
+  worst_flights: CaseWorstFlight[]
+  cancellations: {
+    total: number
+    by_airline: { airline: string; name: string; n_cancelled: number; n_sched: number; rate: number | null }[]
+    by_dest: { dest: string; city: string; n_cancelled: number }[]
+    by_day: { date: string; n_sched: number; n_cancelled: number; rate: number | null }[]
+  }
+  recovery: {
+    all_clear_ts: string | null
+    recovered_at: string | null
+    hours_to_recover: number | null
+    baseline_mean_delay: number | null
+    min_n: number
+    rule?: string
+  }
+  /** null when the artefact was built without the model. ALWAYS in-sample — show the flag on the page, not only in prose. */
+  retrospective: {
+    in_sample: boolean
+    split_containing_episode: string
+    val_dates: [string, string]
+    model_version: string
+    live_scoring_began: string
+    flag_threshold: number
+    note: string
+    overall: CaseRetroBlock
+    by_signal: ({ signal: number } & CaseRetroBlock)[]
+    hourly: {
+      t: string
+      n: number
+      mean_p: number | null
+      mean_pred_delay: number | null
+      mean_obs_delay: number | null
+    }[]
+  } | null
+  clip: { min: number; max: number; note: string }
+  sources: Record<string, string>
+}

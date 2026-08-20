@@ -2,7 +2,7 @@
  *  In production the app reads them from raw.githubusercontent.com/main (CORS *, max-age 300) so the Pages build never has
  *  to be redone for fresh data; the copy bundled under <base>/data/ is the fallback (and the source in dev). */
 import { useEffect, useState } from 'react'
-import type { Departures, Meta, ModelJson, Patterns, Weather } from './types'
+import type { CaseStudy, Departures, Meta, ModelJson, Patterns, Weather } from './types'
 
 const RAW_BASE = 'https://raw.githubusercontent.com/dsjwong/hkia-delay-predictor/main/web/public/data/'
 const LOCAL_BASE = `${import.meta.env.BASE_URL}data/`
@@ -49,6 +49,11 @@ export function loadJson<T>(name: string, force = false): Promise<T> {
   return promise
 }
 
+/** Drop the in-memory snapshot cache. Tests only — each case needs its own stubbed response for the same file name. */
+export function clearJsonCache(): void {
+  cache.clear()
+}
+
 export interface Loaded<T> {
   data: T | null
   error: string | null
@@ -86,6 +91,8 @@ export const useMeta = () => useJson<Meta>('meta.json')
 export const useWeather = () => useJson<Weather>('weather.json')
 export const usePatterns = () => useJson<Patterns>('patterns.json', 0)
 export const useModel = () => useJson<ModelJson>('model.json', 0)
+/** Static history (five fixed days of July 2026) — never re-fetched while mounted. */
+export const useCaseStudy = () => useJson<CaseStudy>('case_noul.json', 0)
 export const useDepartures = (which: 'yesterday' | 'today' | 'tomorrow') =>
   useJson<Departures>(`departures_${which}.json`)
 

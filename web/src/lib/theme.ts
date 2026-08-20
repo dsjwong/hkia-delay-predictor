@@ -22,6 +22,17 @@ export const ACCENT = '#f59e0b'
 export const GOOD = '#22c55e'
 export const WARNING = '#f59e0b'
 export const CRITICAL = '#ef4444'
+/** Typhoon-signal background bands (Case-study route). Deliberately NOT a colour-encoded series: they are
+ *  labelled regions behind the delay bars, so the level is read off the T1/T3/T8/T9 chip, never off the tint.
+ *  The dataviz validator's ordinal gate (ΔL >= 0.06, light end >= 2:1 vs surface) is inapplicable and does not pass
+ *  for these values — a band that cleared 2:1 against the card would out-shout the bars it sits behind.
+ *  Keyed by signal level; anything not listed (0) draws no band. */
+export const SIGNAL_BAND: Record<number, string> = {
+  1: 'rgba(250,250,250,0.040)',
+  3: 'rgba(250,250,250,0.070)',
+  8: 'rgba(250,250,250,0.115)',
+  9: 'rgba(250,250,250,0.165)',
+}
 /** neutral reference line / "perfect" diagonal */
 export const NEUTRAL = '#52525b'
 /** P(delay > 15): single-hue amber, dim -> bright on the dark surface (amber-900 → amber-300) */

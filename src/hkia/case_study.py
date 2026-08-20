@@ -372,18 +372,22 @@ def _episode_signals(tc: pd.DataFrame) -> list[dict]:
              "hours": _r((r.end - r.start).total_seconds() / 3600, 1)} for r in ep.itertuples(index=False)]
 
 
-def _other_episodes(tc: pd.DataFrame, flights_min: str, flights_max: str) -> list[dict]:
-    """Everything else HKO hoisted inside the flight-data window — mentioned so the page does not imply Noul was alone."""
+def _other_episodes(tc: pd.DataFrame, flights_min: str, flights_max: str) -> tuple[list[dict], dict | None]:
+    """Everything else HKO hoisted inside the flight-data window — mentioned so the page does not imply Noul was alone.
+
+    Tropical cyclones are grouped by `tc_id` (one episode each); strong-monsoon rows all share tc_id "0" and would
+    otherwise collapse into one nonsense span from the first to the last, so they are returned as a count instead.
+    """
+    inside = tc[(tc["tc_id"] != TC_ID) & (tc["end"].dt.strftime("%Y-%m-%d") >= flights_min)
+                & (tc["start"].dt.strftime("%Y-%m-%d") <= flights_max)]
     out = []
-    for (tid, name), g in tc[tc["tc_id"] != TC_ID].groupby(["tc_id", "tc_name"], dropna=False, sort=False):
-        s, e = g["start"].min(), g["end"].max()
-        if e.strftime("%Y-%m-%d") < flights_min or s.strftime("%Y-%m-%d") > flights_max:
-            continue
-        lv = int(g["level"].max())
-        out.append({"tc_id": tid, "name": _s(name) if lv > 0 else "Strong monsoon signal",
-                    "peak_signal": lv, "start": _hkt(s), "end": _hkt(e),
-                    "kind": "tc" if lv > 0 else "monsoon"})
-    return sorted(out, key=lambda x: x["start"])
+    for tid, g in inside[inside["level"] > 0].groupby("tc_id", sort=False):
+        out.append({"tc_id": str(tid), "name": _s(g["tc_name"].iloc[0]), "peak_signal": int(g["level"].max()),
+                    "start": _hkt(g["start"].min()), "end": _hkt(g["end"].max()), "kind": "tc"})
+    msn = inside[inside["level"] == 0]
+    monsoon = None if msn.empty else {"n": int(len(msn)), "date_min": msn["start"].min().strftime("%Y-%m-%d"),
+                                      "date_max": msn["end"].max().strftime("%Y-%m-%d")}
+    return sorted(out, key=lambda x: x["start"]), monsoon
 
 
 def build(conn, now: dt.datetime | None = None, models_dir: Path = ROOT / "models",
@@ -406,6 +410,7 @@ def build(conn, now: dt.datetime | None = None, models_dir: Path = ROOT / "model
     pk = busy.loc[busy["mean_delay"].idxmax()] if len(busy) and busy["mean_delay"].notna().any() else None
     rec = recovery(hourly, tc, base["mean_delay"])
 
+    others, monsoon = _other_episodes(tc, all_flights["date"].min(), all_flights["date"].max())
     retro = retrospective(conn, (start, end), models_dir) if with_model else None
     if with_model and retro is None:
         log.warning("no retrospective in the output (model artefacts unavailable)")
@@ -424,7 +429,8 @@ def build(conn, now: dt.datetime | None = None, models_dir: Path = ROOT / "model
         },
         "window": {"start": _hkt(start), "end": _hkt(end), "tz": HKT,
                    "days": sorted(win["date"].unique().tolist())},
-        "other_episodes": _other_episodes(tc, all_flights["date"].min(), all_flights["date"].max()),
+        "other_episodes": others,
+        "other_monsoon": monsoon,
         "headline": {
             "peak_signal": peak,
             "n_flights_window": int(len(win)),
