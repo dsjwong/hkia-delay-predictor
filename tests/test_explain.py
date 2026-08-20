@@ -196,7 +196,7 @@ def test_storage_keeps_only_the_latest_score_per_flight():
     # a second score of the same flight replaces the row instead of appending one (the DB-growth rule)
     later = now + dt.timedelta(hours=3)
     assert E.write(conn, _tgt("2026-08-20", 0.62, [["wx_ts", 1, 0.5]]), "v1", later, HKT) == 1
-    # a third score with identical p and attributions is not rewritten at all (no churn on the committed db)
+    # a third score with identical p and attributions is not rewritten at all (no churn on the db)
     later2 = now + dt.timedelta(hours=6)
     assert E.write(conn, _tgt("2026-08-20", 0.62, [["wx_ts", 1, 0.5]]), "v1", later2, HKT) == 0
     rows = conn.execute("SELECT scored_at, p_delay15, top_json FROM explanations").fetchall()

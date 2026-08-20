@@ -1,7 +1,8 @@
 """Read-only data access for the Streamlit dashboard: SQLite (data/hkia.db) + models/ + reports/.
 
-Everything is cached with st.cache_data(ttl=600); the DB is the committed file that the GitHub Actions cron refreshes every
-30 min, so on Streamlit Community Cloud a new bot commit == fresh data on the next reload.
+Everything is cached with st.cache_data(ttl=600). The db is NOT in git: the GitHub Actions cron uploads it to the `data`
+release every 30 min and `hkia.dbsync.pull` fetches it here (first call downloads ~40 MB; later calls compare a 1 KB sidecar
+and skip the download when nothing changed). Set HKIA_DB_SYNC=0 to use a local file as-is (tests, offline work).
 """
 from __future__ import annotations
 
@@ -22,7 +23,11 @@ sys.path.insert(0, str(ROOT / "src"))  # hkia.evaluate (numpy/pandas only) for t
 
 from hkia.evaluate import MIN_N, compute as live_eval_compute  # noqa: E402
 
-DB_PATH = Path(os.environ.get("HKIA_DB", ROOT / "data" / "hkia.db"))
+from hkia import dbsync  # noqa: E402
+
+SYNC = os.environ.get("HKIA_DB_SYNC", "1") != "0"
+_preferred = Path(os.environ.get("HKIA_DB", ROOT / "data" / "hkia.db"))
+DB_PATH = dbsync.writable_dest(_preferred) if SYNC else _preferred
 HKT = dt.timezone(dt.timedelta(hours=8))
 TTL = 600
 DELAY_MIN, DELAY_MAX = -60, 600  # same outlier clip as hkia.features
@@ -45,7 +50,19 @@ def _q(sql: str, params=()) -> pd.DataFrame:
         return pd.read_sql_query(sql, c, params=params)
 
 
+@st.cache_data(ttl=TTL, show_spinner="Fetching the latest database…")
+def sync_db() -> str:
+    """Pull the release-hosted db at most once per TTL (shared across sessions). Returns a status line for the sidebar."""
+    if not SYNC:
+        return "sync off"
+    try:
+        return dbsync.pull(DB_PATH)
+    except dbsync.NoRemoteDB as e:
+        return f"sync failed: {e}"
+
+
 def db_available() -> bool:
+    sync_db()
     return DB_PATH.exists()
 
 

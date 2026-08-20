@@ -13,16 +13,16 @@ def render() -> None:
     c1, c2 = st.columns([3, 2], gap="large")
     c1.markdown("#### Architecture")
     c1.markdown(f"""
-1. GitHub Actions cron (`ingest.yml`, every 30 min, $0) checks out this repo.
+1. GitHub Actions cron (`ingest.yml`, every 30 min, $0) checks out this repo and pulls the live SQLite db from the repo's `data` GitHub Release (`hkia.dbsync`).
 2. `hkia.ingest_flights` pulls yesterday/today/tomorrow's departures from the Airport Authority flight-info API on data.gov.hk (scheduled vs actual = the label).
 3. `hkia.ingest_weather` pulls the latest VHHH METAR (aviationweather.gov) and HKO current readings + warnings (typhoon signals) into SQLite `data/hkia.db`.
 4. `hkia.features` builds the same 33 features for training and inference (calendar, airline/destination, congestion, as-of weather, point-in-time rolling delays).
 5. `hkia.train` (offline, occasionally) fits baselines + XGBoost on a date-ordered split → `models/`, `reports/M2-results.md`.
 6. `hkia.predict` (every cron run) scores every not-yet-departed flight for today + tomorrow → table `predictions` (history kept).
 7. A daily job (`backfill.yml`) tops up METAR history (IEM) + typhoon-signal history and runs `hkia.evaluate` (last score before departure vs actual).
-8. The bot commits `data/hkia.db` back to `main` — the db in git *is* the data store.
-9. `hkia.api` (FastAPI) serves the same tables read-only; this Streamlit page reads the db directly.
-10. Streamlit Community Cloud redeploys from `main`, so each bot commit refreshes this page.
+8. The bot uploads `data/hkia.db` back to the release (single writer; checksum + row-count guard) and commits only the small JSON snapshots the web app reads.
+9. `hkia.api` (FastAPI) serves the same tables read-only; this Streamlit page downloads the db on start and re-checks a 1 KB sidecar every 10 min.
+10. Streamlit Community Cloud redeploys from `main` on code changes; data refreshes without a redeploy.
 """)
     c2.markdown("#### Data sources")
     c2.markdown(f"""

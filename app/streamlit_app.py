@@ -1,4 +1,4 @@
-"""HKIA departure-delay dashboard (M4). Reads the committed SQLite db + models/ artefacts; never scores.
+"""HKIA departure-delay dashboard (M4). Reads the release-hosted SQLite db (hkia.dbsync) + models/ artefacts; never scores.
 
   streamlit run app/streamlit_app.py --server.headless true
 
@@ -33,8 +33,9 @@ T.register_template()
 T.inject_css()
 
 if not D.db_available():
-    st.error(f"Database not found at `{D.DB_PATH}`. On Streamlit Cloud this is the committed `data/hkia.db`; locally run "
-             "`python scripts/ingest_all.py --backfill` first.")
+    st.error(f"Database not found at `{D.DB_PATH}` and it could not be downloaded from the `data` release "
+             f"({D.sync_db()}). Locally: `python -m hkia.dbsync pull`, or build your own with "
+             "`python scripts/ingest_all.py --backfill`.")
     st.stop()
 
 fresh = D.freshness()

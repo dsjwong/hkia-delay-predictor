@@ -2,6 +2,9 @@
 .env
 __pycache__/
 *.pyc
+data/*.db
+data/*.db.meta.json
+data/*.db.part
 *.db-journal
 *.db-wal
 *.db-shm

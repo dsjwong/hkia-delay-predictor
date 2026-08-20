@@ -89,7 +89,7 @@ plus a bias term, in log-odds, summing exactly to the margin) and keeps the **to
   model's training data" rather than falsely claiming the flight has no airline.
 - **Storage.** Table `explanations` — `PRIMARY KEY (date, flight_no, scheduled_ts)`, i.e. **the latest score only**, `INSERT OR
   REPLACE`d on every re-score and pruned to `today − 1 … tomorrow` (`hkia.explain.KEEP_DAYS`); a row whose probability and
-  attributions are unchanged is not rewritten at all, so an idle cron run leaves the committed db byte-identical. It stores `[[feature, value,
+  attributions are unchanged is not rewritten at all, so an idle cron run leaves the db byte-identical. It stores `[[feature, value,
   logodds], …]`, not the rendered sentence, so editing a template changes what the apps show without re-scoring anything.
 - **Publication.** `hkia.export_json` renders the templates and adds `"why": [[direction, one-liner, pp], …]` to each **not-yet-departed**
   flight of `departures_*.json` (direction is `+1` when the feature pushed P up). Older snapshots simply have no `why` key; both

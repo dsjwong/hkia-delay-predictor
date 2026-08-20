@@ -5,13 +5,16 @@ Two front-ends read the same data: the Streamlit dashboard (`app/`, Streamlit Co
 
 ## Dashboard — Streamlit Community Cloud
 
-The dashboard (`app/streamlit_app.py`) reads the committed `data/hkia.db` plus `models/MANIFEST.json`, `models/feature_importance.json`
-and `reports/M2-results.md` straight from the repo checkout. Nothing is scored at request time, so the deploy needs no secrets,
-no database server and no xgboost — just `requirements.txt` (pandas, numpy, streamlit, plotly, fastapi, uvicorn).
+The dashboard (`app/streamlit_app.py`) reads `data/hkia.db` plus `models/MANIFEST.json`, `models/feature_importance.json`
+and `reports/M2-results.md`. The models/reports come from the repo checkout; the db is **not in git** — on start `app/data.py`
+calls `hkia.dbsync.pull`, which downloads it (~45 MB) from the repo's `data` GitHub Release
+(`https://github.com/dsjwong/hkia-delay-predictor/releases/tag/data`) into `data/` (or the temp dir if the checkout is read-only),
+then every 10 min re-reads the 1 KB `hkia.db.meta.json` sidecar and only re-downloads when the sha256 changed. Nothing is scored
+at request time, so the deploy needs no secrets, no database server and no xgboost — just `requirements.txt`.
 
 ## Why Streamlit Community Cloud first
-- $0, GitHub-native: it redeploys from `main` on every push — and the ingest bot pushes a fresh `data/hkia.db` every 30 min,
-  so the app updates itself with no extra plumbing (the app also re-reads the db every 10 min via `st.cache_data(ttl=600)`).
+- $0, GitHub-native: it redeploys from `main` on every push; data needs no redeploy at all because the app pulls the db from
+  the release every 10 min (`st.cache_data(ttl=600)` around `hkia.dbsync.pull`).
 - No Dockerfile / `Procfile` / `render.yaml` to maintain. Fly.io or Render would need a container plus a way to fetch the latest db
   (git pull in a cron, or object storage) — worth it only if we outgrow Cloud's limits (1 GB RAM, sleeps after inactivity, public apps).
 - Streamlit is already the UI; the FastAPI service is optional (`uvicorn hkia.api:app`) and not deployed in v1.
@@ -33,11 +36,12 @@ no database server and no xgboost — just `requirements.txt` (pandas, numpy, st
 6. Paste the URL into the README's Dashboard section (`README.md`, "Live: …") and commit.
 
 ## What to expect afterwards
-- Every bot commit (`ingest: …` every 30 min, `backfill: …` daily) triggers a Cloud redeploy (fast — dependencies are cached), so
-  the page is never more than ~30 min behind the API. If you'd rather not redeploy that often, Cloud → app menu → *Settings* lets you
-  reboot manually only, but then the app only sees new data on reboot; the default auto-redeploy is what we want.
-- Db size: `data/hkia.db` is ~10 MB and grows a few hundred KB/day (`predictions` history + flights churn). Fine for git and for
-  Cloud for months; the README limitations note the eventual move to Postgres/artifact storage.
+- The bot still commits the JSON snapshots (`ingest: …` every 30 min), which triggers a Cloud redeploy (fast — dependencies are
+  cached); independently of that, the app re-checks the release every 10 min, so the page is never more than ~40 min behind the cron.
+- Db size: `data/hkia.db` is ~45 MB and grows ~1 MB/day; it lives on the `data` release (2 GB/file limit), not in git, since
+  2026-08-20. First page load after a reboot downloads it once (a few seconds on Cloud's network).
+- Where the db is written: `data/` inside the checkout when writable (Cloud is), else `$TMPDIR/hkia/`. `HKIA_DB_SYNC=0` disables the
+  download and uses whatever file is at `HKIA_DB`/`data/hkia.db` (used by the tests and for offline work).
 - Sleep: public Community Cloud apps go to sleep after ~12 h without visitors and wake on the next visit (a few seconds).
 - Logs: app menu → *Manage app* → logs, if a page errors. Locally the same page is `streamlit run app/streamlit_app.py`.
 
@@ -67,7 +71,8 @@ basemap style/tiles and the data JSON are the only runtime requests besides the 
   `VITE_ADSB_URL`. No secret is involved; the worker only forwards one fixed upstream URL.
 
 ### How fresh data reaches the page without rebuilding
-- `ingest.yml` (every 30 min) and `backfill.yml` (daily) run `python -m hkia.export_json` and commit `web/public/data/*.json` next to the DB.
+- `ingest.yml` (every 30 min) and `backfill.yml` (daily) run `python -m hkia.export_json` and commit `web/public/data/*.json` (the only
+  thing the bots commit; the db itself goes to the `data` release via `python -m hkia.dbsync push`).
 - The deployed page fetches those files from `https://raw.githubusercontent.com/dsjwong/hkia-delay-predictor/main/web/public/data/` (sends
   `access-control-allow-origin: *`, `cache-control: max-age=300`; the app adds a 5-minute cache-bust bucket) and re-polls every 5 minutes while
   open. If raw.githubusercontent is unreachable it falls back to the copy bundled into the Pages artifact (`/data/`, as of the last build).

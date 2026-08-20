@@ -134,7 +134,7 @@ def write(conn, tgt: pd.DataFrame, version: str, now: dt.datetime, hkt: dt.timez
     Latest-only by primary key, so a re-score overwrites the flight's row instead of adding one. A row whose
     probability and attributions are byte-identical to the stored one is left alone: an unchanged feature vector
     produces an identical score, and `hkia.predict.decide` does not store that score either — rewriting it would
-    only churn the committed db (~1 MB/day over 48 cron runs) and would move `scored_at` away from the score in
+    only churn the db (~1 MB/day over 48 cron runs) and would move `scored_at` away from the score in
     `predictions` that the card displays.
     """
     conn.executescript(EXPLAIN_SCHEMA)
