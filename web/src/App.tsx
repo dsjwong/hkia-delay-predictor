@@ -10,6 +10,7 @@ const Live = lazy(() => import('./pages/Live'))
 const Today = lazy(() => import('./pages/Today'))
 const Patterns = lazy(() => import('./pages/Patterns'))
 const Model = lazy(() => import('./pages/Model'))
+const Typhoon = lazy(() => import('./pages/Typhoon'))
 const About = lazy(() => import('./pages/About'))
 
 function Fallback() {
@@ -28,7 +29,7 @@ function Fallback() {
 
 function Shell() {
   const { pathname } = useLocation()
-  const isMap = pathname === '/' || !['/today', '/patterns', '/model', '/about'].includes(pathname)
+  const isMap = pathname === '/' || !['/today', '/patterns', '/model', '/typhoon', '/about'].includes(pathname)
   return (
     <div className="min-h-full flex flex-col">
       <Header />
@@ -42,6 +43,7 @@ function Shell() {
               <Route path="/today" element={<Today />} />
               <Route path="/patterns" element={<Patterns />} />
               <Route path="/model" element={<Model />} />
+              <Route path="/typhoon" element={<Typhoon />} />
               <Route path="/about" element={<About />} />
               <Route path="*" element={<Live />} />
             </Routes>

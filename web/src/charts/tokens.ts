@@ -5,6 +5,7 @@ export {
   BORDER,
   CARD,
   CATEGORICAL,
+  CRITICAL,
   ELEV,
   ELEV_2,
   GRID,
@@ -17,6 +18,7 @@ export {
   SERIES_2,
   SERIES_3,
   SERIES_4,
+  SIGNAL_BAND,
   amberHex,
   heatHex,
 } from '@/lib/theme'

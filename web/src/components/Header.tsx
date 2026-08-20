@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Activity, BarChart3, CalendarDays, Info, Map as MapIcon } from 'lucide-react'
+import { Activity, BarChart3, CalendarDays, Info, Map as MapIcon, Wind } from 'lucide-react'
 import { useMetaCtx } from '@/lib/meta-context'
 import { ageMin, hm } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/today', label: 'Today', icon: CalendarDays },
   { to: '/patterns', label: 'Patterns', icon: BarChart3 },
   { to: '/model', label: 'Model', icon: Activity },
+  { to: '/typhoon', label: 'Case study', icon: Wind },
   { to: '/about', label: 'About', icon: Info },
 ]
 
@@ -120,7 +121,7 @@ export function BottomTabs() {
       className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border bg-bg/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
       aria-label="Pages"
     >
-      <div className="grid grid-cols-5 h-14">
+      <div className="grid grid-cols-6 h-14">
         {NAV.map((n) => (
           <NavLink
             key={n.to}
