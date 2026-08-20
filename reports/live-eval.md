@@ -1,6 +1,6 @@
 # Live evaluation — predictions vs actuals
 
-Generated 2026-08-20T07:09:59+00:00. Window: flights departed in the last 7 days; per flight, the last prediction written before its actual departure. Matured predictions: **1402**.
+Generated 2026-08-20T07:11:23+00:00. Window: flights departed in the last 7 days; per flight, the last prediction written before its actual departure. Matured predictions: **1402**.
 
 Dates 2026-08-17..2026-08-20; observed P(delay > 15) = 0.2375; median lead time between last score and departure = 25.6 min.
 
@@ -20,8 +20,6 @@ Model minus airline × hour baseline: AUC +0.0169 · Brier -0.0053 · log loss -
 | 2026-08-18 | 440 | 0.2386 | 0.7012 | 0.6549 | 0.1635 | 14.2 | 17.3 |
 | 2026-08-19 | 439 | 0.1845 | 0.5825 | 0.6825 | 0.1530 | 11.9 | 15.2 |
 | 2026-08-20 | 230 | 0.3478 | 0.7085 | 0.7267 | 0.1998 | 18.4 | 18.1 |
-
-`*` = thin day (< 20 flights — treat as noise).
 
 ## By lead time (minutes between the last score and the actual departure)
 

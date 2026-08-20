@@ -258,7 +258,8 @@ def render(res: dict) -> str:
             m, b = r["model"], r.get("baseline", {})
             lines.append(f"| {r['date']}{' *' if r['thin'] else ''} | {r['n']} | {_fmt(r['delayed15_rate'])} | {_fmt(m['auc'])} | "
                          f"{_fmt(b.get('auc'))} | {_fmt(m['brier'])} | {_fmt(m['mae'], 1)} | {_fmt(b.get('mae'), 1)} |")
-        lines += ["", f"`*` = thin day {thin}."]
+        if any(r["thin"] for r in res["daily"]):
+            lines += ["", f"`*` = thin day {thin}."]
 
     if res.get("lead_buckets"):
         lines += ["", "## By lead time (minutes between the last score and the actual departure)", "",
@@ -267,7 +268,8 @@ def render(res: dict) -> str:
             m, b = r["model"], r.get("baseline", {})
             lines.append(f"| {r['label']}{' *' if r['thin'] else ''} | {r['n']} | {_fmt(r['delayed15_rate'])} | {_fmt(m['auc'])} | "
                          f"{_fmt(b.get('auc'))} | {_fmt(m['mae'], 1)} |")
-        lines += ["", f"`*` = thin bucket {thin}. Scores written far ahead of departure know less: a bucket near 0.5 means no signal there."]
+        star = f"`*` = thin bucket {thin}. " if any(r["thin"] for r in res["lead_buckets"]) else ""
+        lines += ["", star + "Scores written far ahead of departure know less: a bucket near 0.5 means no signal there."]
 
     if res.get("calibration"):
         lines += ["", "## Calibration on live data (10 equal-width probability bins)", "",
