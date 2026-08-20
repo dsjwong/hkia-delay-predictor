@@ -171,9 +171,8 @@ def lead_bucket_bars(buckets: pd.DataFrame) -> go.Figure:
                     hovertemplate="AUC %{y:.3f} · n=%{customdata}<extra>baseline</extra>", **BAR)
     fig.add_hline(y=0.5, line=dict(color=T.GREY, width=1), annotation_text="coin flip", annotation_position="top right",
                   annotation=dict(font=dict(size=10, color=T.MUTED)))
-    fig.update_layout(title="AUC by lead time — minutes between the last score and the actual departure",
-                      barmode="group", bargap=0.4, bargroupgap=0.08, yaxis=dict(range=[0, 1], tickformat=".2f"),
-                      xaxis=dict(title=""))
+    fig.update_layout(title="AUC by lead time before departure", barmode="group", bargap=0.4, bargroupgap=0.08,
+                      yaxis=dict(range=[0, 1], tickformat=".2f"), xaxis=dict(title=""))
     return T.finish(fig, 300)
 
 
