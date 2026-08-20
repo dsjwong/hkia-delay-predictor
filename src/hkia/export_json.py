@@ -7,8 +7,9 @@ Written files (all < 1 MB together; gzip is handled by GitHub Pages):
                              IATA->ICAO map (from the db), airport city/country map
   departures_yesterday.json  \\
   departures_today.json       > one HKT day each: every flight with its latest prediction (+ a short prediction history
-                             for today/tomorrow as [epoch_s, p, pred_min] triples); names/cities resolve through meta.json
-  departures_tomorrow.json   /
+                             for today/tomorrow as [epoch_s, p, pred_min] triples, and for not-yet-departed flights a
+                             `why` array of the top-3 attributions as [direction, one-liner, probability points] rendered
+  departures_tomorrow.json   /  from table `explanations` by hkia.explain); names/cities resolve through meta.json
   patterns.json              91-day hour x weekday heatmap, airline table (n >= 50), top-25 destinations, daily series with
                              TC-signal flags, typhoon-day stats, by-hour share for the top-4 airlines
   model.json                 M2 metrics, calibration bins, feature importance, ablation, live evaluation, interpretation,
@@ -32,6 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import explain
 from .airlines import AIRLINE_NAMES, IATA_TO_ICAO, airline_name
 from .airports import airport, known
 from .db import DB_PATH, ROOT
@@ -122,6 +124,7 @@ def departures(c: sqlite3.Connection, date: str, with_history: bool) -> dict:
     if fl.empty:
         return out
     has_pred = _has(c, "predictions")
+    why = explain.load(c, date)   # (flight_no, scheduled_ts) -> top-3 attributions of the latest score
     pr = _q(c, LATEST_PRED, (date,)) if has_pred else pd.DataFrame(columns=["flight_no", "scheduled_ts", "p_delay15", "pred_delay_min", "scored_at"])
     df = fl.merge(pr, on=["flight_no", "scheduled_ts"], how="left")
     hist: dict[tuple[str, str], list] = {}
@@ -150,6 +153,11 @@ def departures(c: sqlite3.Connection, date: str, with_history: bool) -> dict:
         }
         if r.destination and "," in r.destination:
             d["dest_all"] = r.destination
+        # "why this prediction": top-3 local SHAP attributions as [direction, one-liner, probability points].
+        # Only for flights that have not left yet — that is what the block is for, and it keeps the file small.
+        w = why.get((r.flight_no, r.scheduled_ts)) if d["status"] == "scheduled" else None
+        if w:
+            d["why"] = explain.compact(w)
         hh = hist.get((r.flight_no, r.scheduled_ts))
         if hh:
             d["history"] = hh

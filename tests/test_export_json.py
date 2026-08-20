@@ -19,6 +19,13 @@ def test_export_writes_all_files(fixture_db, tmp_path):
     assert f["status"] == "departed" and f["delay_min"] is not None and f["p"] != 0.5  # latest score, not the early one
     assert f["history"][0][0] < f["history"][-1][0] and f["sched_ts"].endswith("Z")
     assert today["flights"][-1]["status"] == "scheduled" and "delay_min" in today["flights"][-1]
+    # "why this prediction": top-3 attributions, only on flights that have not departed yet
+    assert "why" not in f, "departed flights carry their score but not the attribution block"
+    why = today["flights"][-1]["why"]
+    assert len(why) == 3 and [w[0] for w in why] == [1, 1, -1]           # [direction, one-liner, probability points]
+    assert why[0][1] == "thunderstorm reported at the field" and why[2][1].startswith("operated by Cathay")
+    assert abs(why[0][2]) > abs(why[2][2]) > 0                           # ranked by size, signed like the direction
+    assert sum(1 for x in today["flights"] if "why" in x) == 30          # the 30 still-scheduled flights
     pat = json.loads((out / "patterns.json").read_text())
     assert pat["summary"]["n"] == 120 and len(pat["heatmap"]["mean_delay"]) == 7 and len(pat["heatmap"]["mean_delay"][0]) == 24
     assert pat["airlines"][0]["code"] == "CPA" and pat["destinations"][0]["code"] == "TPE"

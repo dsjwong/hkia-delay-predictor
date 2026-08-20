@@ -1,5 +1,6 @@
 """API + evaluation tests against a small synthetic SQLite fixture (no network, no models needed except MANIFEST read)."""
 import datetime as dt
+import json
 import sqlite3
 
 import numpy as np
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from hkia import db as _db
 from hkia.api import app
 from hkia.evaluate import compute
+from hkia.explain import EXPLAIN_SCHEMA
 from hkia.predict import PRED_SCHEMA
 
 HKT = dt.timezone(dt.timedelta(hours=8))
@@ -20,9 +22,9 @@ DAY = "2026-08-17"
 def fixture_db(tmp_path, monkeypatch):
     path = tmp_path / "fx.db"
     conn = sqlite3.connect(path)
-    conn.executescript(_db.SCHEMA + PRED_SCHEMA)
+    conn.executescript(_db.SCHEMA + PRED_SCHEMA + EXPLAIN_SCHEMA)
     rng = np.random.default_rng(0)
-    fl, pr = [], []
+    fl, pr, ex = [], [], []
     # 150 flights: 120 departed (label known), 30 still scheduled; each with two predictions (early + last)
     for i in range(150):
         sched = dt.datetime(2026, 8, 17, 6, 0, tzinfo=HKT) + dt.timedelta(minutes=4 * i)
@@ -35,8 +37,12 @@ def fixture_db(tmp_path, monkeypatch):
         for k, scored in enumerate((sched - dt.timedelta(hours=5), sched - dt.timedelta(minutes=20))):
             pr.append((DAY, f"CX {100+i}", sched.isoformat(), p if k else 0.5, 10.0 + p * 20 if k else 8.0, "test@0", f"h{k}",
                        scored.astimezone(dt.timezone.utc).isoformat(timespec="seconds")))
+        # one attribution row per flight (latest score only — that is the whole point of the table's primary key)
+        ex.append((DAY, f"CX {100+i}", sched.isoformat(), scored.astimezone(dt.timezone.utc).isoformat(timespec="seconds"),
+                   "test@0", p, -0.97, json.dumps([["wx_ts", 1, 0.42], ["cong_pm60", 55, 0.21], ["airline", "CPA", -0.13]])))
     conn.executemany("INSERT INTO flights VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", fl)
     conn.executemany("INSERT INTO predictions VALUES (?,?,?,?,?,?,?,?)", pr)
+    conn.executemany("INSERT INTO explanations VALUES (?,?,?,?,?,?,?,?)", ex)
     conn.execute("INSERT INTO metar VALUES ('2026-08-17T03:30:00Z','VHHH 170330Z 09010KT 9999 FEW020 31/26 Q1006',31,26,90,10,NULL,'6+',NULL,'VFR',NULL,'x')")
     conn.execute("INSERT INTO hko_current VALUES ('2026-08-17T03:40:00+00:00','2026-08-17T11:30:00+08:00','{\"temperature\":{}}')")
     conn.execute("INSERT INTO hko_warnings VALUES ('2026-08-17T03:40:00+00:00',1,'WHOT','{\"WHOT\":{}}')")
