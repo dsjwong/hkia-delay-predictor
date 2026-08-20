@@ -19,8 +19,14 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt -r requirements-ml.txt
-      - name: Ingest flights + weather
+      - name: Ingest flights + arrivals + weather
         run: python scripts/ingest_all.py
+      - name: ADS-B snapshot (~55 aircraft within 100 nm -> adsb_snapshots, pruned to 30 days)
+        run: PYTHONPATH=src python -m hkia.ingest_adsb
+        continue-on-error: true      # a flaky free ADS-B feed must never cost us a flights/predict run
+      - name: Link inbound aircraft to departures (-> aircraft_links; yesterday + today, idempotent)
+        run: PYTHONPATH=src python -m hkia.rotations
+        continue-on-error: true
       - name: Score today + tomorrow (-> predictions table)
         run: PYTHONPATH=src python -m hkia.predict
       - name: Export JSON snapshots for the static web app (web/public/data/)
