@@ -14,7 +14,8 @@ APP = ROOT / "app" / "streamlit_app.py"
 sys.path.insert(0, str(ROOT / "app"))
 pytestmark = pytest.mark.skipif(not (ROOT / "data" / "hkia.db").exists(), reason="data/hkia.db not present")
 
-PAGES = {"live": "Live map", "today": "Today", "patterns": "Patterns", "model": "Model", "about": "About"}
+PAGES = {"live": "Live map", "today": "Today", "patterns": "Patterns", "model": "Model",
+         "case": "Case study", "about": "About"}
 ADSB_FIXTURE = {"ac": [
     {"hex": "780abc", "flight": "CPA261  ", "lat": 22.45, "lon": 114.2, "alt_baro": 9000, "gs": 320, "track": 45.0, "t": "A359", "r": "B-LRA", "dst": 18.0},
     {"hex": "780def", "flight": "CSN3456 ", "lat": 22.9, "lon": 113.4, "alt_baro": 31000, "gs": 450, "track": 200.0, "t": "A321", "r": "B-1234", "dst": 60.2},
@@ -124,6 +125,31 @@ def test_patterns_page_renders():
     assert len(at.dataframe) >= 2  # airline + destinations tables in the expander
     airline_tbl = at.dataframe[0].value
     assert (airline_tbl["n"] >= 50).all()
+
+
+def test_case_study_page_renders_with_the_in_sample_flag():
+    """The Typhoon Noul page: tiles, the centrepiece chart, the tables — and the in-sample warning in the UI."""
+    at = _run("case")
+    labels = {m.label for m in at.metric}
+    assert {"Peak signal", "Departures cancelled", "Peak hourly mean delay", "Hours to recover"} <= labels
+    assert any(m.value.startswith("No. ") for m in at.metric if m.label == "Peak signal")
+    # the honesty banner is a real UI element, not a line buried in the prose
+    warn = " ".join(w.value for w in at.warning)
+    assert "No prediction was published for these flights" in warn and "in-sample" in warn
+    assert any("labelled background band" in c.value for c in at.caption), "the one-axis choice is stated on the page"
+    # totals + worst-flights tables
+    cols = [set(d.value.columns) for d in at.dataframe]
+    assert any({"signal", "flights", "cancelled", "mean delay (min)"} <= c for c in cols)
+    assert any({"flight", "airline", "delay (min)"} <= c for c in cols)
+    worst = next(d.value for d in at.dataframe if "delay (min)" in d.value.columns)
+    assert worst["delay (min)"].is_monotonic_decreasing and worst["delay (min)"].iloc[0] > 600
+
+
+def test_case_study_page_without_the_artefact_says_how_to_make_it(monkeypatch):
+    import data as _D
+    monkeypatch.setattr(_D, "case_study", lambda: None)
+    at = _run("case")
+    assert any("hkia.case_study" in i.value for i in at.info)
 
 
 def test_model_page_renders():
