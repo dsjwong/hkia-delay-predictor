@@ -21,6 +21,7 @@ import xgboost as xgb
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import brier_score_loss, log_loss, mean_absolute_error, roc_auc_score
 
+from .baseline import baseline_b_predict, baseline_b_table
 from .db import ROOT
 from .features import CATEGORICAL, FEATURES, NUMERIC
 
@@ -55,19 +56,8 @@ def to_matrix(df: pd.DataFrame, cats: dict[str, pd.CategoricalDtype] | None = No
 
 
 # ---------- baselines ----------
-
-def baseline_b_table(train: pd.DataFrame, target: str) -> tuple[pd.Series, pd.Series, float]:
-    g = train.groupby(["airline", "sched_hour"])[target].mean()
-    a = train.groupby("airline")[target].mean()
-    return g, a, float(train[target].mean())
-
-
-def baseline_b_predict(df: pd.DataFrame, table) -> np.ndarray:
-    g, a, glob = table
-    keys = pd.MultiIndex.from_frame(df[["airline", "sched_hour"]])
-    p = g.reindex(keys).to_numpy()
-    p_air = a.reindex(df["airline"]).to_numpy()
-    return np.where(np.isnan(p), np.where(np.isnan(p_air), glob, p_air), p)
+# baseline_b_table / baseline_b_predict live in hkia.baseline (pandas + numpy only) so the dashboards can score the same
+# lookup table without xgboost / scikit-learn installed; re-exported here because this is where it is fitted and saved.
 
 
 # ---------- metrics ----------

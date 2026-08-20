@@ -7,6 +7,7 @@ mistakes), so the expected AUC is high and the numbers are checkable by hand —
 import datetime as dt
 import sqlite3
 
+import pandas as pd
 import pytest
 
 from hkia import db as _db
@@ -121,7 +122,6 @@ def test_calibration_bins_are_ordered_and_sum_to_n(res):
 
 
 def test_calibration_drops_empty_bins(res, slices_db):
-    import pandas as pd
     df = matured_predictions(sqlite3.connect(slices_db), 7, NOW)
     assert len(calibration_bins(df)) == len(res["calibration"])
     single = pd.DataFrame({"p_delay15": [0.42, 0.44], "delayed15": [0, 1]})
@@ -162,3 +162,31 @@ def test_everything_is_json_safe(res):
     txt = json.dumps(res, allow_nan=False)
     assert "NaN" not in txt and "Infinity" not in txt
     assert len(txt) < 100_000
+
+
+def test_baseline_scoring_does_not_need_the_training_stack(slices_db, monkeypatch):
+    """The Streamlit app runs on requirements.txt (no xgboost / scikit-learn), so the report card's baseline must be
+    scoreable from hkia.baseline alone — importing hkia.train here would break the deployed dashboard."""
+    import sys
+
+    import joblib
+    from hkia.baseline import baseline_b_predict, baseline_b_table
+
+    models = slices_db.parent / "models"
+    models.mkdir()
+    train = pd.DataFrame({"airline": ["CPA"] * 6, "sched_hour": [6, 6, 7, 7, 8, 8],
+                          "delayed15": [1, 0, 1, 1, 0, 0], "delay_min": [40.0, 2.0, 30.0, 50.0, 1.0, 3.0]})
+    joblib.dump({"clf": baseline_b_table(train, "delayed15"), "reg": baseline_b_table(train, "delay_min")},
+                models / "baseline_b_airline_hour.joblib")
+    for m in [k for k in sys.modules if k.startswith("hkia.train")]:
+        del sys.modules[m]
+    monkeypatch.setitem(sys.modules, "xgboost", None)          # make `import hkia.train` impossible
+    monkeypatch.setitem(sys.modules, "sklearn", None)
+
+    res = compute(sqlite3.connect(slices_db), days=7, now=NOW, models_dir=models)
+    assert "error" not in res["baseline_airline_hour"] and res["baseline_airline_hour"]["auc"] is not None
+    assert res["deltas"]["auc"] is not None
+    assert all("baseline" in r for r in res["daily"]) and all("baseline" in b for b in res["lead_buckets"])
+    assert "hkia.train" not in sys.modules
+    assert baseline_b_predict(train.head(2), baseline_b_table(train, "delayed15")).tolist() == [0.5, 0.5]
+

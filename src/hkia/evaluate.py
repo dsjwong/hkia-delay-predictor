@@ -115,7 +115,8 @@ def _slice(y, p, r, yhat) -> dict:
 def _baseline_columns(df: pd.DataFrame, models_dir: Path) -> pd.DataFrame | None:
     """Score the whole window with the airline x hour lookup table saved by hkia.train -> columns b_p, b_min."""
     import joblib
-    from .train import baseline_b_predict
+
+    from .baseline import baseline_b_predict
     tab = joblib.load(models_dir / "baseline_b_airline_hour.joblib")
     b = df.assign(sched_hour=df["scheduled_ts"].dt.tz_convert(HKT).dt.hour)
     return df.assign(b_p=np.asarray(baseline_b_predict(b, tab["clf"]), dtype=float),
