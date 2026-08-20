@@ -8,6 +8,7 @@ import { Empty } from '@/components/ui/empty'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { HBar } from '@/charts/HBar'
 import { Reliability } from '@/charts/ModelCharts'
+import { ReportCard } from '@/components/ReportCard'
 import { useModel } from '@/lib/data'
 import type { MetricSet } from '@/lib/types'
 import { num, signed } from '@/lib/time'
@@ -158,6 +159,10 @@ export default function Model() {
         </p>
       </div>
 
+      <ReportCard ev={ev} />
+
+      <hr className="border-border" />
+
       <section className="space-y-3" aria-labelledby="heldout-h">
         <h3 id="heldout-h" className="hk-kicker">
           Held-out test — XGBoost vs airline × hour baseline
@@ -303,9 +308,10 @@ export default function Model() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Live evaluation — predictions vs what actually happened</CardTitle>
+            <CardTitle>Live evaluation — full metric table</CardTitle>
             <CardDescription>
-              rolling {ev.window_days}-day window; per flight, the last score written before it departed
+              the same rolling {ev.window_days}-day window as the report card, with log loss and the naive predictors
+              ("always the observed rate" / "always the median delay") for reference
             </CardDescription>
           </div>
         </CardHeader>

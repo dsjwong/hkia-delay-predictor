@@ -95,6 +95,71 @@ export interface MetricSet {
   mae?: number | null
 }
 
+/** AUC / Brier / MAE for one slice of the live window; auc is null when the slice holds a single class. */
+export interface SliceMetrics {
+  auc: number | null
+  brier: number | null
+  mae: number | null
+}
+
+export interface LiveDailyRow {
+  date: string
+  n: number
+  delayed15_rate: number | null
+  /** fewer than live_eval.min_slice_n flights — the AUC is noise, label it */
+  thin: boolean
+  model: SliceMetrics
+  baseline?: SliceMetrics
+}
+
+export interface LeadBucket {
+  label: string
+  lo_min: number
+  hi_min: number | null
+  n: number
+  thin: boolean
+  delayed15_rate: number | null
+  median_lead_min: number | null
+  model: SliceMetrics
+  baseline?: SliceMetrics
+}
+
+/** One matured prediction, for the notable-flights table. */
+export interface NotableFlight {
+  flight_no: string
+  date: string
+  airline: string | null
+  dest: string | null
+  p: number | null
+  pred_min: number | null
+  delay_min: number | null
+  delayed15: 0 | 1
+  lead_min: number | null
+}
+
+/** Everything the "model report card" needs; written by src/hkia/evaluate.compute into model.json. */
+export interface LiveEval {
+  window_days: number
+  n_matured: number
+  min_n: number
+  min_slice_n?: number
+  computed_at?: string
+  status: string
+  date_min?: string
+  date_max?: string
+  delayed15_rate?: number
+  median_lead_min?: number
+  model?: MetricSet
+  baseline_airline_hour?: MetricSet & { error?: string }
+  naive_rate?: MetricSet
+  deltas?: { auc: number | null; brier: number | null; logloss: number | null; mae: number | null } | null
+  daily?: LiveDailyRow[]
+  lead_buckets?: LeadBucket[]
+  calibration?: { bin: string; n: number; pred_mean: number; obs_rate: number }[]
+  notable?: { confident_correct: NotableFlight[]; worst_misses: NotableFlight[] }
+  by_model_version?: Record<string, number>
+}
+
 export interface ModelJson {
   manifest: {
     created_at: string
@@ -120,21 +185,7 @@ export interface ModelJson {
     clf_delayed15: Record<string, number>
     reg_delay_min: Record<string, number>
   } | null
-  live_eval: {
-    window_days: number
-    n_matured: number
-    min_n: number
-    computed_at?: string
-    status: string
-    date_min?: string
-    date_max?: string
-    delayed15_rate?: number
-    median_lead_min?: number
-    model?: MetricSet
-    baseline_airline_hour?: MetricSet & { error?: string }
-    naive_rate?: MetricSet
-    by_model_version?: Record<string, number>
-  }
+  live_eval: LiveEval
   interpretation_md: string
   limitations: string[]
 }
