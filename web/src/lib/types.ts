@@ -108,17 +108,21 @@ export interface LiveDailyRow {
   delayed15_rate: number | null
   /** fewer than live_eval.min_slice_n flights — the AUC is noise, label it */
   thin: boolean
+  /** first/last day of the rolling window: truncated, so not comparable with a full day */
+  partial?: boolean
   model: SliceMetrics
   baseline?: SliceMetrics
 }
 
+/** Forecast horizon = scheduled_ts - scored_at (known when the score is written, independent of the outcome). */
 export interface LeadBucket {
   label: string
-  lo_min: number
+  lo_min: number | null
   hi_min: number | null
   n: number
   thin: boolean
   delayed15_rate: number | null
+  median_horizon_min?: number | null
   median_lead_min: number | null
   model: SliceMetrics
   baseline?: SliceMetrics
@@ -128,6 +132,7 @@ export interface LeadBucket {
 export interface NotableFlight {
   flight_no: string
   date: string
+  sched_ts?: string
   airline: string | null
   dest: string | null
   p: number | null
@@ -135,6 +140,24 @@ export interface NotableFlight {
   delay_min: number | null
   delayed15: 0 | 1
   lead_min: number | null
+  horizon_min?: number | null
+}
+
+/** Every call published above `threshold`, hits and misses — the counterpart to the hand-picked notable table. */
+export interface HighConfidenceRecord {
+  threshold: number
+  n: number
+  n_late: number
+  rate: number | null
+}
+
+export type DeltaKey = 'auc' | 'brier' | 'logloss' | 'mae'
+
+/** Paired bootstrap over the matured flights: 95 % CI on (model - baseline), and whether it clears 0. */
+export interface Bootstrap {
+  n_boot: number
+  ci: Partial<Record<DeltaKey, [number, number] | null>>
+  beats_baseline: Partial<Record<DeltaKey, boolean | null>>
 }
 
 /** Everything the "model report card" needs; written by src/hkia/evaluate.compute into model.json. */
@@ -152,11 +175,19 @@ export interface LiveEval {
   model?: MetricSet
   baseline_airline_hour?: MetricSet & { error?: string }
   naive_rate?: MetricSet
-  deltas?: { auc: number | null; brier: number | null; logloss: number | null; mae: number | null } | null
+  median_horizon_min?: number
+  coverage?: { n_departed?: number; n_scored?: number; pct?: number | null; error?: string }
+  deltas?: Partial<Record<DeltaKey, number | null>> | null
+  bootstrap?: Bootstrap | null
+  cal_min_n?: number
   daily?: LiveDailyRow[]
   lead_buckets?: LeadBucket[]
-  calibration?: { bin: string; n: number; pred_mean: number; obs_rate: number }[]
-  notable?: { confident_correct: NotableFlight[]; worst_misses: NotableFlight[] }
+  calibration?: { bin: string; n: number; thin?: boolean; pred_mean: number; obs_rate: number }[]
+  notable?: {
+    confident_correct: NotableFlight[]
+    worst_misses: NotableFlight[]
+    high_confidence?: HighConfidenceRecord
+  }
   by_model_version?: Record<string, number>
 }
 

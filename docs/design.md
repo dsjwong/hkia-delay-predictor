@@ -42,9 +42,15 @@ No blue chrome anywhere; links are `ink` with a `border-2` underline.
 - Live **model report card** (Model route, `web/src/charts/ReportCharts.tsx` + `web/src/components/ReportCard.tsx`): two series only —
   `SERIES_1` = the model, `SERIES_2` = the airline × hour baseline — with a legend on every chart and a `NEUTRAL` 0.5 coin-flip reference
   line on every AUC chart, because an AUC axis without that anchor flatters the model. Daily AUC uses a round-tenth y range that always
-  keeps 0.5 in view; lead-time bars start at 0. Outcome badges in the notable-flights table pair the colour with a ✓/✗ icon and the words.
+  keeps 0.5 in view; horizon bars start at 0. Outcome badges in the notable-flights table pair the colour with a ✓/✗ icon and the words.
   The Streamlit twin (`app/charts.py: live_daily_auc, lead_bucket_bars`) uses the same meaning in the Streamlit slots (amber `#c9820c`
   model, teal `#14a88d` baseline — re-validated on `#18181b`, all checks PASS).
+  **Uncertainty is part of the design, not a footnote.** A delta pill is only `good`-green when its 95 % bootstrap interval excludes 0;
+  otherwise it is the neutral `default` variant and carries the words "within noise" next to the interval — green is reserved for a claim
+  the data supports. Calibration bins under `cal_min_n` flights are drawn **hollow** (card fill, `SERIES_1` stroke) and the connecting
+  line skips them, so three coin flips cannot read as a trend; thin AUC slices keep their bar but are labelled `thin` with their `n`.
+  Every report-card chart carries `role="img"` + an `aria-label` that reads out its numbers, because the values otherwise exist only in
+  a mouse-only tooltip.
 - `NEUTRAL #52525b` for reference lines (perfect-calibration diagonal, P = 0.5 line). Grid `#27272a` solid hairline, no dashes. One axis
   per chart; legends for ≥ 2 series; `TipBox` tooltip on every mark; text always in text tokens.
 - Map: other traffic zinc-500 → zinc-100 by altitude, tracked-not-scored zinc-50, tracked-scored amber ramp, hover ring zinc-50, selected

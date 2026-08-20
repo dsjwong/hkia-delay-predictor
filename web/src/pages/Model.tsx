@@ -141,7 +141,9 @@ export default function Model() {
         .sort((a, c) => c[1] - a[1])
         .map(([k, v]) => ({ label: k, value: v }))
     : []
-  const ev = md.live_eval
+  // the JS and model.json are deployed independently (the page reads the JSON from raw.githubusercontent with its own
+  // CDN cache), so a snapshot predating this section must degrade, not take the page down with it
+  const ev = md.live_eval ?? { window_days: 7, n_matured: 0, min_n: 100, status: 'missing from this snapshot' }
   const d = (a?: number | null, c?: number | null, digits = 3) => (a == null || c == null ? '' : signed(a - c, digits))
 
   return (
