@@ -13,6 +13,9 @@ previous row from the same hour unless that row is the first. A new score that m
 |pred_delay_min| < 1 vs the latest stored row is not stored at all. `hkia.evaluate` still takes the last stored score
 before departure; `hkia.compact_predictions` applies the same hourly rule retroactively (idempotent, run daily).
 
+The same forward pass also writes the top-3 local SHAP attributions of each score to table `explanations` (`hkia.explain`) —
+**latest only**, replaced in place and pruned to a 3-day window, so that table does not grow with the scoring history.
+
 Weather for flights in the future: the as-of join has nothing after "now", so those rows get the LATEST METAR observation
 (persistence forecast; `metar_age_min` capped at the training tolerance of 180 min). Limitation, not a forecast — TAF is a
 stretch goal. Rolling delay features for future flights only see flights that have already departed *as of now*, which is
@@ -30,6 +33,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from . import explain
 from .db import ROOT, connect
 from .features import build_features, load_flights, load_metar, load_tc_signals, weather_asof
 from .train import to_matrix
@@ -108,6 +112,9 @@ def score(conn, models: dict, dates: list[str], include_departed: bool = False,
         return tgt.assign(p_delay15=np.nan, pred_delay_min=np.nan, features_hash="")
     X, _ = to_matrix(tgt, clf["cats"], clf["features"])
     tgt["p_delay15"] = clf["model"].predict_proba(X)[:, 1].round(4)
+    # same forward pass, one extra booster call: local SHAP contributions for the "why this prediction" block
+    contribs = explain.attribute(clf["model"], X, clf["features"])
+    tgt[["base_logodds", "top_json"]] = explain.explain_frame(tgt, X, contribs, clf["features"])
     Xr, _ = to_matrix(tgt, models["reg"]["cats"], models["reg"]["features"])
     tgt["pred_delay_min"] = models["reg"]["model"].predict(Xr).round(1)
     tgt["features_hash"] = [hashlib.md5(json.dumps([None if (isinstance(v, float) and np.isnan(v)) else v for v in row],
@@ -175,6 +182,18 @@ def write_predictions(conn, tgt: pd.DataFrame, version: str, now: dt.datetime, d
     return len(rows)
 
 
+def write_explanations(conn, tgt: pd.DataFrame, version: str, now: dt.datetime) -> tuple[int, int]:
+    """Store the top-3 SHAP attributions of every scored flight, then prune old dates. Returns (written, pruned).
+
+    Unlike `predictions` this table is **latest-only** (primary key without `scored_at`): a re-score replaces the row, so the
+    table stays at ~3 days of schedule no matter how often the cron runs. See `hkia.explain`.
+    """
+    written = explain.write(conn, tgt, version, now, HKT)
+    pruned = explain.prune(conn, now, HKT)
+    conn.commit()
+    return written, pruned
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--date", action="append", help="YYYY-MM-DD (repeatable); default today + tomorrow HKT")
@@ -188,6 +207,8 @@ def main(argv=None):
     conn = connect()
     tgt = score(conn, models, target_dates(a.date, now), a.include_departed, now)
     n = write_predictions(conn, tgt, models["version"], now, dedupe=not a.no_dedupe)
+    n_why = write_explanations(conn, tgt, models["version"], now)
+    log.info("explanations: %d rows replaced (latest only), %d pruned (kept the last %d days + tomorrow)", *n_why, explain.KEEP_DAYS)
     if len(tgt):
         p = tgt["p_delay15"]
         log.info("scored %d flights, wrote %d rows (model %s); p_delay15 mean %.3f, quantiles 10/50/90 = %.3f/%.3f/%.3f, "
