@@ -81,8 +81,8 @@ def _report_card(ev: dict) -> None:
         else:
             st.plotly_chart(C.lead_bucket_bars(buckets), width="stretch")
             thin = [r["label"] for r in ev["lead_buckets"] if r["thin"]]
-            if thin:
-                st.caption(f"Thin buckets (< {ev.get('min_slice_n', 20)} flights, AUC is mostly noise): {', '.join(thin)}.")
+            st.caption("Minutes between the last score written for a flight and its actual departure — the further out, the less is known."
+                       + (f" Thin buckets (< {ev.get('min_slice_n', 20)} flights, AUC is mostly noise): {', '.join(thin)}." if thin else ""))
 
     c3, c4 = st.columns(2)
     with c3:
