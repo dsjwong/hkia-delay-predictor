@@ -26,7 +26,7 @@ python3 -m venv .venv && .venv/bin/pip install -e .      # runtime (requirements
 .venv/bin/streamlit run app/streamlit_app.py            # dashboard, http://localhost:8501 (needs only requirements.txt)
 .venv/bin/python -m pytest -q                            # feature-builder tests (leakage, as-of join, congestion) + API/eval tests on a fixture db + dashboard AppTest smoke tests
 ```
-`requirements.txt` is the light runtime set (pandas, numpy, streamlit, plotly, pydeck, requests, fastapi, uvicorn) that Streamlit Cloud installs; `requirements-ml.txt` adds what the ingestion / training / scoring jobs need (xgboost, scikit-learn, pyarrow, requests, …) and is what the Actions workflows install.
+`requirements.txt` is the light runtime set (pandas, numpy, streamlit, plotly, pydeck, requests, fastapi, uvicorn, joblib) that Streamlit Cloud installs — the airline × hour baseline table lives in `hkia/baseline.py` (pandas + numpy only, re-exported by `train.py`) so the deployed dashboard can score the same baseline the report card compares against, without xgboost or scikit-learn; `requirements-ml.txt` adds what the ingestion / training / scoring jobs need (xgboost, scikit-learn, pyarrow, requests, …) and is what the Actions workflows install.
 The committed `data/hkia.db` carries the live tables, the weather backfill tables and `predictions` (all written by the Actions jobs).
 
 ### API (`uvicorn hkia.api:app`)
