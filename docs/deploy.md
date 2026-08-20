@@ -52,7 +52,7 @@ no database server and no xgboost — just `requirements.txt` (pandas, numpy, st
 
 The static app in `web/` is built by `.github/workflows/pages.yml` (Node 22, `npm ci && npm run lint && npm test -- --run && npm run build`,
 smoke check that `dist/index.html` has the root and `dist/data/meta.json` exists, then `actions/upload-pages-artifact` + `actions/deploy-pages`).
-URL: **https://dsjwong.github.io/hkia-delay-predictor/** (Vite `base: '/hkia-delay-predictor/'`, hash router so deep links work without a 404 rule).
+URL: **https://darrenwongsj.dev/hkia-delay-predictor/** (Vite `base: '/hkia-delay-predictor/'`, hash router so deep links work without a 404 rule).
 
 ### Assets
 Everything the page needs is in the Pages artifact: Inter is bundled from `@fontsource-variable/inter` (no font CDN), the CARTO dark-matter
@@ -98,6 +98,6 @@ Optional: a captured feed frame (`curl https://api.adsb.lol/v2/lat/22.308/lon/11
 plus `VITE_ADSB_URL=/hkia-delay-predictor/_adsb_sample.json npm run dev` shows real aircraft in dev without any CORS relay.
 
 ### After a deploy
-- `gh run list --workflow=pages.yml` — build + deploy take ~1 min; `curl -s -o /dev/null -w "%{http_code}" https://dsjwong.github.io/hkia-delay-predictor/` → 200.
+- `gh run list --workflow=pages.yml` — build + deploy take ~1 min; `curl -s -o /dev/null -w "%{http_code}" https://darrenwongsj.dev/hkia-delay-predictor/` → 200.
 - A browser that still has the previous `index.html` open may fail to load a renamed chunk right after a deploy; the app's error boundary
   reloads once in that case.

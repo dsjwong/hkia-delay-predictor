@@ -1,13 +1,13 @@
 # HKIA Flight Delay Predictor
 
-[![The deployed app: live map, today's departures, a flight card with its SHAP explanation, the live report card and the typhoon case study](docs/img/demo.gif)](https://dsjwong.github.io/hkia-delay-predictor/)
+[![The deployed app: live map, today's departures, a flight card with its SHAP explanation, the live report card and the typhoon case study](docs/img/demo.gif)](https://darrenwongsj.dev/hkia-delay-predictor/)
 
 *26 seconds of the deployed app — live map around VHHH · today's departures · a flight card with the model's own “why” · the live report card it grades itself with · the Typhoon Noul case study.*
-**Try it: https://dsjwong.github.io/hkia-delay-predictor/** (the ADS-B feed was returning nothing from this origin while the clip was recorded, so the map shows the rings, the departures panel and no traffic — see the CORS caveat below.)
+**Try it: https://darrenwongsj.dev/hkia-delay-predictor/** (the ADS-B feed was returning nothing from this origin while the clip was recorded, so the map shows the rings, the departures panel and no traffic — see the CORS caveat below.)
 
-Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live web app: https://dsjwong.github.io/hkia-delay-predictor/** (static React, GitHub Pages) · **Streamlit dashboard: https://hkia-delays.streamlit.app** (fallback) — a live aircraft map around HKIA (ADS-B) with today's departures highlighted by predicted delay, today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
+Predicting departure delays at Hong Kong International Airport from live flight and weather data — an ML-engineering showcase built on real, free, public data. **Live web app: https://darrenwongsj.dev/hkia-delay-predictor/** (static React, GitHub Pages) · **Streamlit dashboard: https://hkia-delays.streamlit.app** (fallback) — a live aircraft map around HKIA (ADS-B) with today's departures highlighted by predicted delay, today's departures with delay predictions, 91-day delay patterns, and an honest model-performance page, refreshed automatically every ~30 minutes from GitHub Actions.
 
-> **The model grades itself in public.** Every prediction the site publishes is scored against what actually happened, and the [live report card](https://dsjwong.github.io/hkia-delay-predictor/#/model) ([Streamlit](https://hkia-delays.streamlit.app/?page=Model) · [`reports/live-eval.md`](reports/live-eval.md)) shows the result with its confidence intervals, including the parts that do not flatter it. Over the last 7 days (n = 1,402 matured predictions), the model beats the airline × hour lookup table on **delay minutes — MAE 14.6 vs 17.4, −2.8 min (95 % CI −3.3 … −2.4)** — while the classification margin, **AUC 0.663 vs 0.647 (+0.017, 95 % CI −0.013 … +0.049)**, is *not yet separable from noise* on four days of data. Not a back-test: for every flight that has since departed, the last probability the site published before it left. (Figures here are a snapshot; the page recomputes them every 30 minutes, so treat the linked report card as the source of truth.)
+> **The model grades itself in public.** Every prediction the site publishes is scored against what actually happened, and the [live report card](https://darrenwongsj.dev/hkia-delay-predictor/#/model) ([Streamlit](https://hkia-delays.streamlit.app/?page=Model) · [`reports/live-eval.md`](reports/live-eval.md)) shows the result with its confidence intervals, including the parts that do not flatter it. Over the last 7 days (n = 1,402 matured predictions), the model beats the airline × hour lookup table on **delay minutes — MAE 14.6 vs 17.4, −2.8 min (95 % CI −3.3 … −2.4)** — while the classification margin, **AUC 0.663 vs 0.647 (+0.017, 95 % CI −0.013 … +0.049)**, is *not yet separable from noise* on four days of data. Not a back-test: for every flight that has since departed, the last probability the site published before it left. (Figures here are a snapshot; the page recomputes them every 30 minutes, so treat the linked report card as the source of truth.)
 
 - **What**: for each HKIA passenger departure, predict P(delay > 15 min) / expected delay minutes, served on a public dashboard with honest evaluation numbers. v1 = departures only.
 - **Data** (3 sources, all free): Airport Authority flight info API via data.gov.hk (scheduled vs actual departure = label; ~91-day rolling history), Hong Kong Observatory open data (current readings, warnings incl. typhoon signals), METAR for VHHH from aviationweather.gov. OpenSky ADS-B is a deferred stretch.
@@ -67,7 +67,7 @@ Live map data: community ADS-B feeds (adsb.lol, OpenSky, adsb.fi, airplanes.live
 ![Model](docs/img/dashboard-model.jpg)
 ![Case study](docs/img/dashboard-typhoon.jpg)
 
-## Web app (GitHub Pages) — https://dsjwong.github.io/hkia-delay-predictor/
+## Web app (GitHub Pages) — https://darrenwongsj.dev/hkia-delay-predictor/
 A static React app in `web/` (Vite + React 19 + TypeScript + Tailwind 4, shadcn-style primitives, Inter, MapLibre GL + deck.gl, Recharts),
 hosted on GitHub Pages with **no backend**: the same six pages as the Streamlit dashboard (Live map · Today · Patterns · Model · Case study · About — the
 Model route leads with the live report card, and the Live map header carries a chip with the current live margin that links to it) in a
@@ -116,7 +116,7 @@ hourly delay took **7 hours** after the all-clear to come back to the 15.9-min n
 live scoring only began 2026-08-17, so **no prediction was ever published for these flights** — the model half is a retrospective
 re-score that is **in-sample** (24–26 Jul sits in the validation split), flagged as such in the UI, and it shows the model ranking these
 flights well (AUC 0.77) while badly under-calling the magnitude (28 min predicted against 123 min observed under signal 8).
-Read it at [/typhoon](https://dsjwong.github.io/hkia-delay-predictor/#/typhoon) (or the dashboard's **Case study** page);
+Read it at [/typhoon](https://darrenwongsj.dev/hkia-delay-predictor/#/typhoon) (or the dashboard's **Case study** page);
 the analysis is [`src/hkia/case_study.py`](src/hkia/case_study.py) → [`reports/case-noul.md`](reports/case-noul.md) +
 `web/public/data/case_noul.json`, a one-off artefact regenerated by hand with `python -m hkia.case_study`, never by the cron.
 
