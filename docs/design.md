@@ -56,6 +56,16 @@ No blue chrome anywhere; links are `ink` with a `border-2` underline.
   pushed it **down** — the same two-series meaning as the report card, and the direction is carried by the arrow glyph, the signed number and a
   visually-hidden "raises/lowers the probability", never by the colour alone. No bar chart: three signed numbers do not need axes, and a
   SHAP bar chart invites reading the three as if they summed to the probability, which they do not.
+- **Case study** (`/typhoon`, `web/src/charts/CaseCharts.tsx`; Streamlit twin `app/charts.py: case_*`): the centrepiece keeps **one
+  y-axis** (delay minutes). The TC signal is drawn as a **background band with a T1/T3/T8/T9 label**, never a second scale — the level is
+  read off the label, the tint only groups the hours. `SIGNAL_BAND` is white at 4 / 7 / 11.5 / 16.5 % on the card; the dataviz validator's
+  *ordinal* gate (ΔL ≥ 0.06, light end ≥ 2:1 vs surface) does not apply and does not pass for those values, and that is deliberate — a band
+  bright enough to clear 2:1 would out-shout the bars it sits behind, and the direct label is the mandated secondary encoding. Wind
+  (`SERIES_2` teal + `NEUTRAL` zinc) and cancellations (`critical` red — the app-wide "cancelled" meaning) get their **own panels with their
+  own axes**, aligned on the same hours. Amber and red are never in one chart: `validate_palette.js` on `#18181b` puts `#ef4444` ↔ `#d97706`
+  at ΔE 4.4 under deuteranopia and 11.8 with normal vision (adjacent-pairs run of `#d97706 #0d9488 #ef4444` PASSes; all-pairs FAILs on exactly
+  that pair), so each panel carries a single series and a title that names it. The retrospective's predicted-vs-observed bars are the usual
+  two-series pair, `SERIES_1` model / `SERIES_2` observed, and every model block on the page carries an **in-sample** badge.
 - `NEUTRAL #52525b` for reference lines (perfect-calibration diagonal, P = 0.5 line). Grid `#27272a` solid hairline, no dashes. One axis
   per chart; legends for ≥ 2 series; `TipBox` tooltip on every mark; text always in text tokens.
 - Map: other traffic zinc-500 → zinc-100 by altitude, tracked-not-scored zinc-50, tracked-scored amber ramp, hover ring zinc-50, selected
