@@ -355,10 +355,14 @@ def coverage(conn) -> str:
     for method in ("stand_gate", "adsb_hex"):
         n, days, turn = conn.execute(
             "SELECT COUNT(*), COUNT(DISTINCT date), AVG(turnaround_min) FROM aircraft_links WHERE method=?", (method,)).fetchone()
+        if not n:
+            lines.append(f"{method:>10}: no links yet")
+            continue
         same, tot = airline_agreement(conn, method)
-        lines.append(f"{method:>10}: {n:>6} links over {days or 0:>3} days, mean turnaround "
-                     f"{turn:.0f} min, airline agreement {100 * same / tot:.1f}% ({same}/{tot})"
-                     if n else f"{method:>10}: no links yet")
+        turn_s = f"{turn:.0f} min" if turn is not None else "n/a (no inbound on blocks yet)"
+        agree_s = f"{100 * same / tot:.1f}% ({same}/{tot})" if tot else "n/a"
+        lines.append(f"{method:>10}: {n:>6} links over {days or 0:>3} days, mean turnaround {turn_s}, "
+                     f"airline agreement {agree_s}")
     dep = conn.execute("SELECT COUNT(*) FROM flights WHERE COALESCE(status_raw,'')!='Cancelled'").fetchone()[0]
     cov = conn.execute("SELECT COUNT(DISTINCT date || dep_flight_no || dep_scheduled_time) FROM aircraft_links").fetchone()[0]
     lines.append(f"{'overall':>10}: {cov}/{dep} departures have an inbound link ({100 * cov / dep:.1f}%)" if dep else "no departures")

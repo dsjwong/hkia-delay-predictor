@@ -286,3 +286,16 @@ def test_both_methods_coexist_on_the_same_departure(conn):
 
 def test_coverage_report_survives_an_empty_database(conn):
     assert "no links yet" in rotations.coverage(conn)
+
+
+def test_coverage_report_survives_links_with_no_actuals_yet(conn):
+    """Tomorrow's links (if gates ever appear early) have no on-blocks time and no turnaround — must not divide by zero."""
+    _arr(conn, "CX 100", "CPA", "08:00", "08:10", "N36")
+    _dep(conn, "CX 101", "CPA", "09:30", "36")
+    conn.commit()
+    rotations.build(conn, [DAY])
+    conn.execute("UPDATE aircraft_links SET turnaround_min=NULL")
+    conn.execute("UPDATE arrivals SET airline=NULL")
+    conn.commit()
+    report = rotations.coverage(conn)
+    assert "no inbound on blocks yet" in report and "airline agreement n/a" in report
