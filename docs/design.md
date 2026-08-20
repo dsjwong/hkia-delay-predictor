@@ -51,6 +51,11 @@ No blue chrome anywhere; links are `ink` with a `border-2` underline.
   line skips them, so three coin flips cannot read as a trend; thin AUC slices keep their bar but are labelled `thin` with their `n`.
   Every report-card chart carries `role="img"` + an `aria-label` that reads out its numbers, because the values otherwise exist only in
   a mouse-only tooltip.
+- **"Why this prediction"** (flight card, `web/src/components/FlightCard.tsx: WhyBlock`; Streamlit twin `app/theme.py: why_lines`): three rows,
+  each an arrow + one plain-English line + the push in probability points. `SERIES_1` amber = pushed P(delay > 15) **up**, `SERIES_2` teal =
+  pushed it **down** — the same two-series meaning as the report card, and the direction is carried by the arrow glyph, the signed number and a
+  visually-hidden "raises/lowers the probability", never by the colour alone. No bar chart: three signed numbers do not need axes, and a
+  SHAP bar chart invites reading the three as if they summed to the probability, which they do not.
 - `NEUTRAL #52525b` for reference lines (perfect-calibration diagonal, P = 0.5 line). Grid `#27272a` solid hairline, no dashes. One axis
   per chart; legends for ≥ 2 series; `TipBox` tooltip on every mark; text always in text tokens.
 - Map: other traffic zinc-500 → zinc-100 by altitude, tracked-not-scored zinc-50, tracked-scored amber ramp, hover ring zinc-50, selected
