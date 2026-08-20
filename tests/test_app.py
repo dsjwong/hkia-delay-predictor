@@ -99,10 +99,25 @@ def test_patterns_page_renders():
 def test_model_page_renders():
     at = _run("model")
     labels = {m.label for m in at.metric}
-    assert {"AUC", "Brier", "MAE (min)"} <= labels
-    met = at.dataframe[0].value
+    assert {"AUC", "Brier", "MAE (min)"} <= labels                       # held-out test tiles
+    met = next(d.value for d in at.dataframe if "predictor" in d.value.columns)
     assert "XGBoost" in set(met["predictor"]) and "AUC ↑" in met.columns
     assert any("matured" in i.value for i in at.info) or len(at.dataframe) >= 3
+
+
+def test_model_page_leads_with_the_live_report_card():
+    at = _run("model")
+    heads = [m.value for m in at.markdown]
+    assert any("Model report card" in h for h in heads)
+    assert any("How this is computed" in h for h in heads) or any("matured" in i.value for i in at.info)
+    collecting = any("matured predictions so far" in i.value for i in at.info)
+    if collecting:                                                       # honest empty state before MIN_N
+        assert "AUC (live)" not in {m.label for m in at.metric}
+        return
+    assert {"AUC (live)", "Matured predictions"} <= {m.label for m in at.metric}
+    notable = next((d.value for d in at.dataframe if "outcome" in d.value.columns), None)
+    assert notable is not None and {"flight", "P(delay > 15)", "outcome"} <= set(notable.columns)
+    assert all(o.startswith(("✓", "✗")) for o in notable["outcome"])     # a mark, not only a colour
 
 
 def test_about_page_renders():

@@ -41,7 +41,10 @@ fresh = D.freshness()
 # ------------------------------------------------------------------ sidebar
 st.sidebar.markdown('<div class="hk-brand"><div class="mark">HK</div><div><div class="name">HKIA delay predictor</div>'
                     '<small>VHHH departures</small></div></div>', unsafe_allow_html=True)
-page = st.sidebar.radio("Page", PAGES, label_visibility="collapsed")
+# ?page=Model deep-links a single page (used by the README links and the screenshot job); unknown values fall back to the map
+_want = (st.query_params.get("page") or "").strip().lower()
+_start = next((i for i, p in enumerate(PAGES) if p.lower() == _want), 0)
+page = st.sidebar.radio("Page", PAGES, index=_start, label_visibility="collapsed")
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     f'<div class="hk-side-kv"><span class="k">Data as of</span><span class="v">{D.fmt_hkt(fresh["last_ingest"])}</span>'
