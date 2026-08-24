@@ -24,10 +24,11 @@ Both are best-effort and incremental: the cron re-links yesterday and today ever
 per day goes into `ingest_log` under job `rotations`.
 
 Usage:
-  python -m hkia.rotations                 # yesterday + today (cron)
+  python -m hkia.rotations                 # yesterday, today, tomorrow (cron)
   python -m hkia.rotations --all           # every day in the flights window (stand_gate over the backfill)
   python -m hkia.rotations 2026-08-19
   python -m hkia.rotations --coverage      # print the coverage + airline-agreement report, link nothing
+  python -m hkia.rotations --events sched  # leak-free rebuild for training (see load_departures)
 """
 import argparse
 import datetime as dt
@@ -141,8 +142,10 @@ def load_arrivals(conn, dates: list[str]) -> list[dict]:
     return out
 
 
-def load_departures(conn, dates: list[str]) -> list[dict]:
-    """Departure rows for the given HKIA day-labels. Cancelled flights never turn an aircraft around -> excluded."""
+def load_departures(conn, dates: list[str], event_source: str = "actual") -> list[dict]:
+    """Departure rows for the given HKIA day-labels. Cancelled flights never turn an aircraft around -> excluded.
+    event_source="sched" drives `event` off the scheduled time only, never actual/estimated -- for leak-free
+    training-data rebuilds, where link existence must not depend on the departure's post-outcome time."""
     q = ",".join("?" * len(dates))
     rows = conn.execute(
         f"SELECT date, flight_no, scheduled_time, airline, destination, scheduled_ts, actual_ts, estimated_ts, gate, status_raw "
@@ -151,9 +154,10 @@ def load_departures(conn, dates: list[str]) -> list[dict]:
     for d, fno, stime, airline, dest, sched, actual, est, gate, status in rows:
         if (status or "").strip().lower() == "cancelled":
             continue
+        event = _dt(sched) if event_source == "sched" else (_dt(actual) or _dt(est) or _dt(sched))
         out.append({"date": d, "flight_no": fno, "scheduled_time": stime, "airline": airline, "destination": dest,
                     "scheduled_ts": sched, "actual_ts": actual, "estimated_ts": est, "gate": gate,
-                    "position": position(gate), "event": _dt(actual) or _dt(est) or _dt(sched)})
+                    "position": position(gate), "event": event})
     return out
 
 
@@ -198,10 +202,10 @@ def _link_row(dep: dict, arr: dict, method: str, built_at: str, confidence: floa
 
 
 # ------------------------------------------------------------------ method: stand <-> gate
-def link_stand_gate(conn, date: dt.date, built_at: str) -> list[dict]:
+def link_stand_gate(conn, date: dt.date, built_at: str, event_source: str = "actual") -> list[dict]:
     """Pair each arrival at a stand with the first departure from the same-numbered gate before the next arrival there."""
     arrivals = [a for a in load_arrivals(conn, _days(date, back=1, fwd=0)) if a["position"] and a["on_blocks"]]
-    departures = [d for d in load_departures(conn, _days(date, back=0, fwd=1))
+    departures = [d for d in load_departures(conn, _days(date, back=0, fwd=1), event_source=event_source)
                   if d["position"] and d["event"] and d["date"] == date.isoformat()]
     by_pos_a: dict[str, list[dict]] = {}
     by_pos_d: dict[str, list[dict]] = {}
@@ -306,14 +310,19 @@ def link_adsb(conn, date: dt.date, built_at: str) -> list[dict]:
 
 
 # ------------------------------------------------------------------ driver
-def build(conn, dates: list[dt.date], now: dt.datetime | None = None) -> dict[str, int]:
-    """Build both methods for the given dates. Returns per-method link counts plus departures covered."""
+def build(conn, dates: list[dt.date], now: dt.datetime | None = None, event_source: str = "actual",
+         full_rebuild: bool = False) -> dict[str, int]:
+    """Build both methods for the given dates. Returns per-method link counts plus departures covered.
+    event_source is threaded into link_stand_gate only -- link_adsb's callsign window stays on actual events.
+    full_rebuild marks the ingest_log detail with scope=all -- events=sched alone can't tell a full --all rebuild
+    (leak-free over the whole window) from a one-date run (leak-free for that one date only, the rest of the
+    table still actual-built)."""
     conn.executescript(LINKS_SCHEMA)
     built_at = (now or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")
     stats = {"adsb_hex": 0, "stand_gate": 0, "departures": 0, "covered": 0}
     for date in dates:
         ds = date.isoformat()
-        sg = link_stand_gate(conn, date, built_at)
+        sg = link_stand_gate(conn, date, built_at, event_source=event_source)
         rows = sg + link_adsb(conn, date, built_at)
         keep = [f"{r['dep_flight_no']}|{r['dep_scheduled_time']}" for r in sg]
         conn.execute(DELETE_STALE + (f" AND (dep_flight_no || '|' || dep_scheduled_time) NOT IN ({','.join('?' * len(keep))})"
@@ -331,7 +340,9 @@ def build(conn, dates: list[dt.date], now: dt.datetime | None = None) -> dict[st
     conn.execute("INSERT INTO ingest_log VALUES (?,?,?)", (
         built_at, "rotations",
         f"{len(dates)} dates, {stats['covered']}/{stats['departures']} departures linked "
-        f"(adsb_hex {stats['adsb_hex']}, stand_gate {stats['stand_gate']})"))
+        f"(adsb_hex {stats['adsb_hex']}, stand_gate {stats['stand_gate']})"
+        + (", events=sched" if event_source == "sched" else "")
+        + (", scope=all" if full_rebuild else "")))
     conn.commit()
     return stats
 
@@ -370,8 +381,11 @@ def coverage(conn) -> str:
 
 
 def default_dates() -> list[dt.date]:
+    """Yesterday, today, and tomorrow -- prediction scores today+tomorrow, so a departure scheduled 00:00-01:59 HKT
+    needs tomorrow's link set built too (link_stand_gate's own back=1/fwd=1 window then pairs it against
+    a late-evening arrival the day before)."""
     today = dt.datetime.now(HKT).date()
-    return [today - dt.timedelta(days=1), today]
+    return [today - dt.timedelta(days=1), today, today + dt.timedelta(days=1)]
 
 
 def all_dates(conn) -> list[dt.date]:
@@ -381,9 +395,12 @@ def all_dates(conn) -> list[dt.date]:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("dates", nargs="*", help="YYYY-MM-DD; default yesterday + today")
+    ap.add_argument("dates", nargs="*", help="YYYY-MM-DD; default yesterday, today, tomorrow")
     ap.add_argument("--all", action="store_true", help="every day present in the flights table")
     ap.add_argument("--coverage", action="store_true", help="print the coverage report and exit")
+    ap.add_argument("--events", choices=["actual", "sched"], default="actual",
+                    help="event time driving the stand_gate pairing window: 'actual' (default, cron) or "
+                         "'sched' (leak-free training-data rebuilds; see load_departures)")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     conn = connect()
@@ -392,10 +409,11 @@ def main(argv=None):
         return 0
     try:
         dates = all_dates(conn) if a.all else ([dt.date.fromisoformat(x) for x in a.dates] or default_dates())
-        stats = build(conn, dates)
+        stats = build(conn, dates, event_source=a.events, full_rebuild=a.all)
         log.info("linked %d/%d departures (adsb_hex %d, stand_gate %d)",
                  stats["covered"], stats["departures"], stats["adsb_hex"], stats["stand_gate"])
     except Exception as e:  # noqa: BLE001 — a feature-source job must never fail the cron
+        conn.rollback()
         log.error("rotations failed (skipped this run): %s: %s", type(e).__name__, e)
         conn.execute("INSERT INTO ingest_log VALUES (?,?,?)",
                      (dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "rotations", f"ERROR {e}"))

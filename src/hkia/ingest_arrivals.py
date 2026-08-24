@@ -59,6 +59,21 @@ CREATE TABLE IF NOT EXISTS arrivals (
 CREATE INDEX IF NOT EXISTS arrivals_stand ON arrivals(date, stand);
 """
 
+ARRIVALS_STATE_HIST_SCHEMA = """
+CREATE TABLE IF NOT EXISTS arrivals_state_hist (
+    arr_date       TEXT NOT NULL,   -- }
+    flight_no      TEXT NOT NULL,   -- } together with scheduled_time: the arrivals primary key this history is for
+    scheduled_time TEXT NOT NULL,   -- }
+    observed_at    TEXT NOT NULL,   -- UTC, this ingest run
+    estimated_ts   TEXT,
+    landed_ts      TEXT,
+    actual_ts      TEXT,
+    PRIMARY KEY (arr_date, flight_no, scheduled_time, observed_at)
+);
+"""  # append-only: today's arrivals.estimated_ts is overwritten on landing and lost; this keeps the history of what
+     # the airport's live estimate said, so a later model phase can reconstruct "what was knowable at time t".
+     # Nothing reads this table yet.
+
 # "At gate 17:18 (19/08/2026)" / "Landed 09:04" / "Est at 21:30"
 _TIME_RE = re.compile(r"^(At gate|Landed|Est at)\s+(\d\d:\d\d)(?:\s+\((\d\d)/(\d\d)/(\d{4})\))?$")
 _KIND = {"At gate": 0, "Landed": 1, "Est at": 2}
@@ -128,10 +143,56 @@ WHERE excluded.status_raw IS NOT arrivals.status_raw
 # stand: COALESCE(NULLIF(...)) because a re-fetch of an old day can come back with an empty stand; never lose one we saw.
 
 
-def ingest_dates(dates: list[dt.date], conn) -> tuple[int, int]:
-    """Upsert the given dates. Returns (rows upserted, dates whose fetch failed)."""
-    conn.executescript(ARRIVALS_SCHEMA)
-    n, failed = 0, 0
+HIST_INSERT = """
+INSERT OR IGNORE INTO arrivals_state_hist (arr_date, flight_no, scheduled_time, observed_at,
+                                           estimated_ts, landed_ts, actual_ts)
+VALUES (:arr_date, :flight_no, :scheduled_time, :observed_at, :estimated_ts, :landed_ts, :actual_ts)
+"""
+
+HIST_KEEP_DAYS = 30
+
+
+def _is_live_date(d: dt.date, today: dt.date | None = None) -> bool:
+    """True for yesterday/today/tomorrow (HKT) -- the live window arrivals_state_hist tracks. Older backfill dates
+    have no live estimate left to record (they are long since landed), so recording their first observation would
+    just inject one no-information row per flight -- ~41k of them for a 91-day --backfill."""
+    today = today or dt.datetime.now(HKT).date()
+    return abs((d - today).days) <= 1
+
+
+def _hist_rows(conn, date: str, rows: list[dict], observed_at: str) -> list[dict]:
+    """rows (as built by rows_from_payload) whose (estimated_ts, landed_ts, actual_ts) triple differs from that
+    arrival's most recently recorded one -> the arrivals_state_hist rows to append this run."""
+    prev = conn.execute(
+        "SELECT flight_no, scheduled_time, estimated_ts, landed_ts, actual_ts FROM ("
+        "  SELECT flight_no, scheduled_time, estimated_ts, landed_ts, actual_ts, "
+        "         ROW_NUMBER() OVER (PARTITION BY flight_no, scheduled_time ORDER BY observed_at DESC) AS rn "
+        "  FROM arrivals_state_hist WHERE arr_date=?) WHERE rn=1", (date,)).fetchall()
+    latest = {(fno, stime): (e, l, a) for fno, stime, e, l, a in prev}
+    out = []
+    for r in rows:
+        key = (r["flight_no"], r["scheduled_time"])
+        triple = (r["estimated_ts"], r["landed_ts"], r["actual_ts"])
+        if latest.get(key) != triple:
+            out.append({"arr_date": date, "flight_no": r["flight_no"], "scheduled_time": r["scheduled_time"],
+                        "observed_at": observed_at, "estimated_ts": triple[0], "landed_ts": triple[1],
+                        "actual_ts": triple[2]})
+    return out
+
+
+def prune_hist(conn, now: dt.datetime | None = None, keep_days: int = HIST_KEEP_DAYS) -> int:
+    """Drop arrivals_state_hist rows older than keep_days. Returns rows deleted."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    cutoff = (now - dt.timedelta(days=keep_days)).isoformat(timespec="seconds")
+    cur = conn.execute("DELETE FROM arrivals_state_hist WHERE observed_at < ?", (cutoff,))
+    return cur.rowcount
+
+
+def ingest_dates(dates: list[dt.date], conn) -> tuple[int, int, int]:
+    """Upsert the given dates and record arrival-state history. Returns (rows upserted, dates whose fetch failed,
+    history rows appended)."""
+    conn.executescript(ARRIVALS_SCHEMA + ARRIVALS_STATE_HIST_SCHEMA)
+    n, failed, n_hist = 0, 0, 0
     now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
     with requests.Session() as s:
         for d in dates:
@@ -145,15 +206,20 @@ def ingest_dates(dates: list[dt.date], conn) -> tuple[int, int]:
             for r in rows:
                 r["now"] = now
             conn.executemany(UPSERT, rows)
+            hist_rows = _hist_rows(conn, d.isoformat(), rows, now) if _is_live_date(d) else []
+            conn.executemany(HIST_INSERT, hist_rows)
             conn.commit()
-            log.info("%s: %d rows", d, len(rows))
+            log.info("%s: %d rows, %d state changes", d, len(rows), len(hist_rows))
             n += len(rows)
+            n_hist += len(hist_rows)
             if len(dates) > 3:
                 time.sleep(0.5)  # be polite during backfill
+    pruned = prune_hist(conn, dt.datetime.now(dt.timezone.utc))
     conn.execute("INSERT INTO ingest_log VALUES (?,?,?)",
-                 (now, "arrivals", f"{len(dates)} dates, {n} rows, {failed} failed"))
+                 (now, "arrivals", f"{len(dates)} dates, {n} rows, {failed} failed, "
+                                    f"{n_hist} state changes, {pruned} hist pruned"))
     conn.commit()
-    return n, failed
+    return n, failed, n_hist
 
 
 THIN = 300  # a complete day is ~440-455 rows; anything below this was never fully ingested
@@ -188,10 +254,12 @@ def main(argv=None):
         log.info("fill-gaps: %d window days missing or < %d rows", len(dates), THIN)
     else:
         dates = [dt.date.fromisoformat(x) for x in a.dates] or default_dates(a.backfill)
-    n, failed = ingest_dates(dates, conn) if dates else (0, 0)
+    n, failed, n_hist = ingest_dates(dates, conn) if dates else (0, 0, 0)
     total = conn.execute("SELECT COUNT(*) FROM arrivals").fetchone()[0]
     landed = conn.execute("SELECT COUNT(*) FROM arrivals WHERE actual_ts IS NOT NULL").fetchone()[0]
-    log.info("upserted %d rows; arrivals table: %d rows, %d with actual_ts", n, total, landed)
+    hist_total = conn.execute("SELECT COUNT(*) FROM arrivals_state_hist").fetchone()[0]
+    log.info("upserted %d rows (%d state changes); arrivals table: %d rows, %d with actual_ts; "
+             "arrivals_state_hist: %d rows", n, n_hist, total, landed, hist_total)
     if failed:
         log.error("%d of %d arrival dates failed to fetch (non-fatal: arrivals are a feature source, not the labels)",
                   failed, len(dates))

@@ -10,7 +10,7 @@ from hkia import db as _db
 from hkia import ingest_adsb, ingest_arrivals, rotations
 from hkia.adsb import COLS
 from hkia.ingest_adsb import ADSB_SCHEMA
-from hkia.ingest_arrivals import ARRIVALS_SCHEMA, parse_status, rows_from_payload
+from hkia.ingest_arrivals import ARRIVALS_SCHEMA, ARRIVALS_STATE_HIST_SCHEMA, parse_status, rows_from_payload
 from hkia.rotations import LINKS_SCHEMA, position
 
 UTC = dt.timezone.utc
@@ -21,7 +21,7 @@ DAY = dt.date(2026, 8, 19)
 @pytest.fixture
 def conn():
     c = sqlite3.connect(":memory:")
-    c.executescript(_db.SCHEMA + ARRIVALS_SCHEMA + ADSB_SCHEMA + LINKS_SCHEMA)
+    c.executescript(_db.SCHEMA + ARRIVALS_SCHEMA + ADSB_SCHEMA + LINKS_SCHEMA + ARRIVALS_STATE_HIST_SCHEMA)
     yield c
     c.close()
 
@@ -140,10 +140,11 @@ def _arr(conn, flight_no, airline, sched, at_gate, stand, date=DAY):
                   f"{date}T{at_gate}:00+08:00" if at_gate else None, stand, "x", "x"))
 
 
-def _dep(conn, flight_no, airline, sched, gate, date=DAY, status="Dep 12:00"):
+def _dep(conn, flight_no, airline, sched, gate, date=DAY, status="Dep 12:00", actual=None):
     conn.execute("INSERT INTO flights (date, flight_no, scheduled_time, airline, destination, scheduled_ts, "
-                 "status_raw, gate, first_seen_at, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                 (date.isoformat(), flight_no, sched, airline, "LHR", f"{date}T{sched}:00+08:00", status, gate, "x", "x"))
+                 "actual_ts, status_raw, gate, first_seen_at, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                 (date.isoformat(), flight_no, sched, airline, "LHR", f"{date}T{sched}:00+08:00",
+                  f"{date}T{actual}:00+08:00" if actual else None, status, gate, "x", "x"))
 
 
 def test_stand_gate_pairs_each_arrival_with_the_next_departure_from_that_position(conn):
@@ -299,3 +300,197 @@ def test_coverage_report_survives_links_with_no_actuals_yet(conn):
     conn.commit()
     report = rotations.coverage(conn)
     assert "no inbound on blocks yet" in report and "airline agreement n/a" in report
+
+
+# ------------------------------------------------------------------ event_source="sched" (leak fix)
+def test_stand_gate_event_source_sched_avoids_leaking_the_actual_time(conn):
+    """A departure's SCHEDULED time can place it outside the pairing window while its ACTUAL time places it inside
+    (or vice versa). event_source="sched" must follow the scheduled time only -- link existence cannot depend on the
+    departure's post-outcome time, or a training rebuild leaks the label into the feature."""
+    _arr(conn, "CX 100", "CPA", "08:00", "08:10", "N36")
+    _dep(conn, "CX 101", "CPA", "08:20", "36", actual="09:00")   # sched: 10 min (too fast); actual: 50 min (fits)
+    _arr(conn, "CX 200", "CPA", "08:00", "08:10", "N40")
+    _dep(conn, "CX 201", "CPA", "09:00", "40", actual="08:20")   # sched: 50 min (fits); actual: 10 min (too fast)
+    conn.commit()
+
+    default_rows = rotations.link_stand_gate(conn, DAY, "now")
+    sched_rows = rotations.link_stand_gate(conn, DAY, "now", event_source="sched")
+
+    assert {r["dep_flight_no"] for r in default_rows} == {"CX 101"}   # actual event links it, sched would not
+    assert {r["dep_flight_no"] for r in sched_rows} == {"CX 201"}     # sched event links it, actual would not
+
+
+def test_build_threads_event_source_into_stand_gate_and_the_ingest_log(conn):
+    _arr(conn, "CX 100", "CPA", "08:00", "08:10", "N36")
+    _dep(conn, "CX 101", "CPA", "08:20", "36", actual="09:00")   # only linkable via the actual event
+    conn.commit()
+
+    sched_stats = rotations.build(conn, [DAY], event_source="sched")
+    assert sched_stats["stand_gate"] == 0
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "events=sched" in detail
+
+    actual_stats = rotations.build(conn, [DAY], event_source="actual")
+    assert actual_stats["stand_gate"] == 1
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "events=sched" not in detail
+
+
+def test_build_marks_scope_all_only_for_a_full_rebuild(conn):
+    """events=sched alone can't tell a full --all rebuild (leak-free over the whole window) from a one-date run
+    (leak-free for that date only, the rest of the table still actual-built) -- scope=all disambiguates."""
+    _arr(conn, "CX 100", "CPA", "08:00", "08:10", "N36")
+    _dep(conn, "CX 101", "CPA", "09:30", "36")
+    conn.commit()
+
+    rotations.build(conn, [DAY], event_source="sched", full_rebuild=False)
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "events=sched" in detail and "scope=all" not in detail
+
+    rotations.build(conn, [DAY], event_source="sched", full_rebuild=True)
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "events=sched" in detail and "scope=all" in detail
+
+    rotations.build(conn, [DAY], event_source="actual", full_rebuild=True)
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "events=sched" not in detail and "scope=all" in detail
+
+
+def test_main_marks_scope_all_only_when_invoked_with_dash_dash_all(conn, monkeypatch):
+    _arr(conn, "CX 100", "CPA", "08:00", "08:10", "N36")
+    _dep(conn, "CX 101", "CPA", "09:30", "36")
+    conn.commit()
+    monkeypatch.setattr(rotations, "connect", lambda: conn)
+
+    rotations.main([DAY.isoformat()])
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "scope=all" not in detail
+
+    rotations.main(["--all"])
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+    assert "scope=all" in detail
+
+
+# ------------------------------------------------------------------ default_dates() includes tomorrow
+def test_default_dates_is_yesterday_today_tomorrow():
+    today = dt.datetime.now(HKT).date()
+    assert rotations.default_dates() == [today - dt.timedelta(days=1), today, today + dt.timedelta(days=1)]
+
+
+def test_a_past_midnight_departure_links_to_the_previous_evenings_arrival(conn):
+    """Prediction scores today+tomorrow, so a departure scheduled 00:00-01:59 HKT needs tomorrow's link set built --
+    default_dates() must include tomorrow for this to ever get a link."""
+    today = dt.datetime.now(HKT).date()
+    tomorrow = today + dt.timedelta(days=1)
+    _arr(conn, "CX 900", "CPA", "23:50", "23:58", "N36", date=today)
+    _dep(conn, "CX 901", "CPA", "00:30", "36", date=tomorrow)
+    conn.commit()
+
+    rotations.build(conn, rotations.default_dates())
+    row = conn.execute("SELECT arr_flight_no FROM aircraft_links WHERE date=? AND dep_flight_no='CX 901'",
+                       (tomorrow.isoformat(),)).fetchone()
+    assert row == ("CX 900",)
+
+
+# ------------------------------------------------------------------ rollback on failure
+def test_main_rolls_back_a_pending_delete_when_the_rebuild_fails(conn, monkeypatch):
+    """Reproduces the bug: DELETE_STALE and the UPSERT that rebuilds it run in one (uncommitted) transaction inside
+    build()'s per-date loop. If something fails between them, main()'s except block must not commit the pending
+    DELETE without its rebuild -- that would silently blank the day's links. Here link_stand_gate is monkeypatched to
+    return a row with confidence=NULL, which conn.executemany(UPSERT, ...) rejects (NOT NULL) *after* DELETE_STALE has
+    already run for the date, reproducing the exact failure window the fix (conn.rollback() first in main()'s except
+    block) protects."""
+    _arr(conn, "CX 100", "CPA", "08:00", "08:10", "N36")
+    _dep(conn, "CX 101", "CPA", "09:30", "36")
+    conn.commit()
+    rotations.build(conn, [DAY])
+    before = conn.execute("SELECT dep_flight_no, arr_flight_no FROM aircraft_links WHERE date=?",
+                          (DAY.isoformat(),)).fetchall()
+    assert before == [("CX 101", "CX 100")]
+
+    real_link_stand_gate = rotations.link_stand_gate
+
+    def poisoned(conn, date, built_at, event_source="actual"):
+        rows = real_link_stand_gate(conn, date, built_at, event_source=event_source)
+        for r in rows:
+            r["confidence"] = None
+        return rows
+
+    monkeypatch.setattr(rotations, "connect", lambda: conn)
+    monkeypatch.setattr(rotations, "link_stand_gate", poisoned)
+    rotations.main([DAY.isoformat()])
+
+    after = conn.execute("SELECT dep_flight_no, arr_flight_no FROM aircraft_links WHERE date=?",
+                         (DAY.isoformat(),)).fetchall()
+    assert after == before                     # the pending DELETE from the failed rebuild did not persist
+    errors = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' AND detail LIKE 'ERROR%'").fetchall()
+    assert len(errors) == 1
+
+
+# ------------------------------------------------------------------ arrivals_state_hist
+def test_arrivals_state_hist_appends_only_on_change(conn):
+    payload = [{"date": "2026-08-19", "list": [
+        {"time": "09:00", "flight": [{"no": "CX 100", "airline": "CPA"}], "status": "Est at 09:20",
+         "origin": ["NRT"], "stand": "N36", "hall": "A", "baggage": "5", "terminal": ""}]}]
+    rows = rows_from_payload(payload)
+    first = ingest_arrivals._hist_rows(conn, "2026-08-19", rows, "2026-08-19T10:00:00+00:00")
+    assert len(first) == 1 and first[0]["estimated_ts"] == "2026-08-19T09:20:00+08:00"
+    conn.executemany(ingest_arrivals.HIST_INSERT, first)
+    conn.commit()
+
+    same = ingest_arrivals._hist_rows(conn, "2026-08-19", rows, "2026-08-19T10:30:00+00:00")
+    assert same == []                                              # nothing changed -> nothing to append
+
+    payload[0]["list"][0]["status"] = "Est at 09:35"                # the airport moves its estimate
+    rows2 = rows_from_payload(payload)
+    changed = ingest_arrivals._hist_rows(conn, "2026-08-19", rows2, "2026-08-19T11:00:00+00:00")
+    assert len(changed) == 1 and changed[0]["estimated_ts"] == "2026-08-19T09:35:00+08:00"
+    conn.executemany(ingest_arrivals.HIST_INSERT, changed)
+    conn.commit()
+    assert conn.execute("SELECT COUNT(*) FROM arrivals_state_hist").fetchone()[0] == 2
+
+
+def test_ingest_dates_records_and_logs_arrival_state_history(conn, monkeypatch):
+    today = dt.datetime.now(HKT).date()
+    payload = [{"date": today.isoformat(), "list": [
+        {"time": "09:00", "flight": [{"no": "CX 100", "airline": "CPA"}], "status": "Est at 09:20",
+         "origin": ["NRT"], "stand": "N36", "hall": "A", "baggage": "5", "terminal": ""}]}]
+    monkeypatch.setattr(ingest_arrivals, "fetch_day", lambda d, s, arrival=False: payload)
+    n, failed, n_hist = ingest_arrivals.ingest_dates([today], conn)
+    assert (n, failed, n_hist) == (1, 0, 1)
+    assert conn.execute("SELECT COUNT(*) FROM arrivals_state_hist").fetchone()[0] == 1
+    detail = conn.execute("SELECT detail FROM ingest_log WHERE job='arrivals' ORDER BY run_at DESC LIMIT 1").fetchone()[0]
+    assert "1 state changes" in detail
+
+
+def test_ingest_dates_skips_history_for_dates_outside_the_live_window(conn, monkeypatch):
+    """A --fill-gaps / --backfill run touches old (already-landed) dates alongside the live window. Recording their
+    first observation would inject one no-information row per flight across the whole 91-day backfill -- only
+    yesterday/today/tomorrow get history."""
+    today = dt.datetime.now(HKT).date()
+    old = today - dt.timedelta(days=10)
+
+    def fake_fetch(d, s, arrival=False):
+        return [{"date": d.isoformat(), "list": [
+            {"time": "09:00", "flight": [{"no": "CX 100", "airline": "CPA"}], "status": "Est at 09:20",
+             "origin": ["NRT"], "stand": "N36", "hall": "A", "baggage": "5", "terminal": ""}]}]
+
+    monkeypatch.setattr(ingest_arrivals, "fetch_day", fake_fetch)
+    n, failed, n_hist = ingest_arrivals.ingest_dates([old, today], conn)
+    assert n == 2 and failed == 0
+    assert n_hist == 1                                              # only today's arrival gets a history row
+    assert conn.execute("SELECT arr_date FROM arrivals_state_hist").fetchall() == [(today.isoformat(),)]
+
+
+def test_arrivals_state_hist_prune_keeps_the_retention_window(conn):
+    now = dt.datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    for days_ago in (0, 1, 29, 30, 31, 60):
+        ts = (now - dt.timedelta(days=days_ago)).isoformat(timespec="seconds")
+        conn.execute("INSERT INTO arrivals_state_hist (arr_date, flight_no, scheduled_time, observed_at) "
+                     "VALUES (?,?,?,?)", ("2026-08-19", "CX 100", "09:00", ts))
+    conn.commit()
+    deleted = ingest_arrivals.prune_hist(conn, now)
+    conn.commit()
+    kept = conn.execute("SELECT COUNT(*) FROM arrivals_state_hist").fetchone()[0]
+    assert deleted == 2 and kept == 4                       # 31 and 60 days old go; exactly 30 days stays
+    assert ingest_arrivals.prune_hist(conn, now) == 0        # idempotent
