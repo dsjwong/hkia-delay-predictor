@@ -1,6 +1,8 @@
 # Inbound-aircraft turnaround signal
 
-*Phase 1 built 2026-08-20. Phase 2 (retraining) deliberately not built — see the backlog note at the end.*
+*Phase 1 built 2026-08-20. Phase 2 built 2026-08-24 — and it does **not** ship the feature phase 1 advertised. The
+in-sample signal below (r = 0.387) was leaky; what survives the leak fix is a **long-turnaround indicator**, mostly
+carried by a single binary. Read "Phase 2 — what was actually built" before quoting any number from phase 1.*
 
 **The idea.** A departure cannot leave until its aircraft has arrived, been cleaned, refuelled and reloaded. If the
 aircraft that is meant to operate your 18:40 to Bangkok is still 40 minutes out, your 18:40 is not leaving at 18:40. This
@@ -140,9 +142,86 @@ Pearson *r* (inbound lateness, departure delay) = **0.387**. Expressed as slack 
 actual on-blocks — a turnaround under 60 minutes carries P(delay > 15) of **65.9 %** against ~20 % for everything
 longer. Monotone, large, and on the right side of plausible. The feature is worth building.
 
+> **This table is leaky and its headline number does not survive phase 2.** It uses the inbound's *final* on-blocks
+> time for every pair — including inbounds that landed *after* the departure's decision point, and (worse) after the
+> departure itself. A model cannot know that. Under the leak-free rule below the same relationship shrinks to
+> *r* ≈ 0.04 and a gradient of 0.19 → 0.29 in P(delay > 15). Keep the table for the intuition, not for the magnitude.
+
 ---
 
-## Phase 2 — the plan (not built)
+## Phase 2 — what was actually built
+
+### The leak, and what is left after fixing it
+
+Three separate leaks had to come out of the phase-1 construction. Two are about *values*, one is about the *link*:
+
+1. **Post-cutoff on-blocks times.** The signal table above uses `arr_actual_ts` unconditionally. The feature may only
+   use the inbound if it was on blocks **strictly before `scheduled_ts − 2 h`** (`hkia.features.PIT_LAG`, the same
+   cutoff the rolling delay block already used). Anything later is the future.
+2. **Not-yet-reached cutoffs at serving time.** A flight scored five hours out has not reached its own cutoff, so it
+   must score as if it had no link. `hkia.predict` passes the scoring timestamp into `build_features`, which gates the
+   block on it — train and serve then agree by construction (`tests/test_features.py` asserts the two paths produce
+   identical rows).
+3. **Label-dependent pairing.** The stored `stand_gate` links pair each arrival with the first departure from that
+   stand *after it, by actual departure time*. Actual departure time **is** the label. Links for training are therefore
+   rebuilt from **scheduled** departure times (`hkia.rotations --events sched`); `data/features.meta.json` records which
+   event source built the parquet, and `scripts/inbound_gate.py` refuses to ship a model built on `actual`.
+
+What is left after all three:
+
+| | leaky (phase 1) | leak-free (phase 2) |
+|---|---|---|
+| P(delay > 15) gradient across inbound lateness | 0.21 → 0.62 | ~0.19 → ~0.29 |
+| Pearson *r* (inbound lateness, departure delay) | 0.387 | ≈ 0.04 |
+
+**The value features are nearly flat. The carrier of the signal is the binary `inbound_known`** — was the aircraft on
+stand at all, two hours out: **P(delay > 15) = 0.213** when it was, **0.356** when it was not. That is the feature this
+phase ships, and it should be described as what it is: an aircraft that is already on stand two hours before departure
+is having a long, calm turnaround. It says nothing about an inbound that is still in the air — the case the phase-1
+write-up was actually excited about.
+
+### `adsb_hex` links are validation-only — and the timestamp trap
+
+`adsb_hex` links are ground truth for *which* aircraft turned around, so they are kept for validating the proxy, and
+they are **excluded from the feature build** (`load_links` filters `method='stand_gate'`; 465 departures carry both,
+which would otherwise duplicate feature rows).
+
+They are also not usable as features for a second reason. Checking when the links were built against when the
+departures left: **about 22 of 501 `adsb_hex` links were built before their departure actually departed** — a lower
+bound, because `built_at` records the *last* change to the row, not the first. The rest were built after the fact and
+could not have been used at scoring time.
+
+> **The trap, written down because it cost real time:** `built_at` is UTC (`...+00:00`) and `actual_ts` is HKT
+> (`...+08:00`). Comparing them as **strings** — which is tempting, since both are ISO-8601 in the same table — makes
+> almost every link look "built before departure" and gives ≈ 499 of 501. The 8-hour offset is the entire result.
+> Normalise to a single offset (parse, then compare) before drawing any conclusion from these two columns.
+
+### Coverage: train ≈ 0.32, serve ≈ 0.23
+
+The parquet knows the inbound of ~**32 %** of departures at the cutoff. Deployment knows ~**23 %** — the stand is
+published only ~2–3 h ahead, and every day-ahead row is knowably empty. Training on the richer distribution ships a
+model that leans on a feature it usually will not have, so `hkia.train --inbound-dropout` masks a random share of the
+linked rows back to the exact serve-time encoding (`inbound_known = 0`, the four value features NaN) — in **all three
+splits**, validation included, so early stopping also sees the deployment distribution. The parquet is never modified.
+`hkia.predict` logs the realised serve-time coverage per horizon bucket to `ingest_log` every run, so the assumed rate
+can be re-checked (and the dropout re-tuned) instead of being believed.
+
+### The ship gate
+
+`scripts/inbound_gate.py` — GATE-A..D, exits non-zero on the first failure: a bootstrap CI on ΔAUC entirely above zero,
+mean ΔMAE over five test-mask seeds no worse, no day-ahead probability inflation against the deployed models on the
+same scratch db, and a MANIFEST that proves the leak-free build (`links_event_source == "sched"`, the expected dropout,
+per-split coverage, the `no_inbound` ablation row, the sensitivity row). If it fails, the block does not ship.
+
+### Phase 3 — the feature phase 1 actually wanted
+
+A true inbound-ETA feature — "your aircraft is 40 minutes out" — needs the inbound's *estimated* arrival as it was
+known at scoring time. That is now being recorded (`arrivals_state_hist`), which unblocks it; it was not buildable when
+phase 1 was written, and it is not what phase 2 ships.
+
+---
+
+## Phase 2 — the original plan (superseded by the section above)
 
 **The feature, stated so that it cannot leak.** At scoring time *t* for a departure scheduled at *s*, the model may use
 only what was knowable at *t*:
@@ -177,16 +256,22 @@ feature**: rich inside ~3 h, absent day-ahead. Two mitigations, in order of pref
 **Also deliberately deferred:** the live-map "aircraft inbound" indicator, and an `explain.py` template for the new
 feature. Both are downstream of the model actually using it.
 
-**When to retrain.** Two things have to be true. The `stand_gate` proxy already has 92 days of history, so the training
-set is not the blocker — the blocker is *scoring-time* history: `arrivals.estimated_ts` snapshots and `adsb_hex` links
-only start accruing 2026-08-20, and reconstructing "what did we know at *t*" needs a few weeks of them. Two to three
-weeks gives ~1,000 ADS-B-linked rotations to validate the proxy against, and enough estimated-arrival history to build
-the leakage-free feature honestly.
+**When to retrain.** ~~Two things have to be true … two to three weeks of scoring-time history.~~ *Superseded.* That note
+assumed the whole plan above had to wait for `arrivals.estimated_ts` history. It does not: the *existence* half of the
+feature (`inbound_known` plus the turnaround values, gated at scheduled − 2 h) needs only the backfilled `stand_gate`
+links, which already exist — so phase 2 was built on 2026-08-24 rather than waiting. What genuinely still needs
+scoring-time history is the **inbound-ETA** feature, i.e. phase 3, and the recorder for it (`arrivals_state_hist`) is
+now running.
 
 ---
 
 ## Backlog
 
-- **Retrain with inbound features ~2026-09-10**, when the accumulated data suffices. Before then: (a) re-run the
-  `stand_gate` vs `adsb_hex` agreement check to put a real error bar on the proxy, (b) confirm `arrivals.estimated_ts`
-  is being captured densely enough by the 30-minute cron to reconstruct scoring-time state.
+- **Phase 3 — inbound ETA as known at scoring time.** Unblocked by the `arrivals_state_hist` recorder; needs a few
+  weeks of it before there is anything to fit. This is the "your aircraft is still 40 minutes out" feature that phase 1
+  described and phase 2 does **not** ship.
+- **Re-check the serve-time coverage assumption.** `hkia.predict` logs inbound coverage per horizon bucket to
+  `ingest_log` every run; if the realised rate drifts away from the ~0.23 the dropout was set from, retune
+  `--inbound-dropout` and re-run the gate.
+- **`stand_gate` vs `adsb_hex` agreement on the same flights**, to put a real error bar on the proxy — now that ADS-B
+  links are accruing. Mind the timestamp trap above when touching `built_at`.

@@ -1,4 +1,5 @@
 import datetime as dt
+import sqlite3
 
 import numpy as np
 import pandas as pd
@@ -104,6 +105,171 @@ def test_point_in_time_rolling_ignores_future_rows():
         assert roll.loc[i, "airline_sameday_n"] == len(h)
         if len(h):
             assert roll.loc[i, "airline_sameday_mean_delay"] == pytest.approx(h["delay_min"].mean())
+
+
+def _links(rows):
+    """rows: (flight_no, dep scheduled UTC iso, inbound on-blocks UTC iso | None, inbound scheduled UTC iso | None, conf)"""
+    df = pd.DataFrame(rows, columns=["flight_no", "scheduled_ts", "arr_actual_ts", "arr_sched_ts", "confidence"])
+    for c in ("scheduled_ts", "arr_actual_ts", "arr_sched_ts"):
+        df[c] = pd.to_datetime(df[c], utc=True)
+    df["date"] = df["scheduled_ts"].dt.tz_convert(F.HKT).dt.strftime("%Y-%m-%d")
+    return df[F.LINK_COLS]
+
+
+# every departure below is scheduled 12:00Z, so the point-in-time cutoff is 10:00Z
+INBOUND_FLIGHTS = [("L1", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:00:00Z", "Dep"),   # inbound on blocks 09:00Z
+                   ("L2", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:00:00Z", "Dep"),   # on blocks 11:00Z (too late)
+                   ("L3", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:00:00Z", "Dep"),   # linked, never on blocks
+                   ("L4", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:00:00Z", "Dep"),   # no link at all
+                   ("L5", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:00:00Z", "Dep")]   # link, arrivals row missing
+INBOUND_LINKS = [("L1", "2026-06-01T12:00:00Z", "2026-06-01T09:00:00Z", "2026-06-01T08:30:00Z", 1.0),
+                 ("L2", "2026-06-01T12:00:00Z", "2026-06-01T11:00:00Z", "2026-06-01T10:45:00Z", 1.0),
+                 ("L3", "2026-06-01T12:00:00Z", None, "2026-06-01T09:00:00Z", 0.6),
+                 ("L5", "2026-06-01T12:00:00Z", "2026-06-01T09:00:00Z", None, 0.6)]
+VALUE_COLS = ["inbound_actual_slack_min", "inbound_lateness_min", "inbound_sched_slack_min", "inbound_confidence"]
+
+
+def _inbound(now=None):
+    fl = _flights(INBOUND_FLIGHTS)
+    out = F.inbound_features(fl, _links(INBOUND_LINKS), now=now)
+    out.index = fl["flight_no"]
+    return out
+
+
+def test_inbound_features_only_count_an_inbound_on_stand_before_the_cutoff():
+    inb = _inbound()
+    assert inb["inbound_known"].tolist() == [1, 0, 0, 0, 1]      # L2 landed after the cutoff -> not knowable
+    l1 = inb.loc["L1"]
+    assert l1["inbound_actual_slack_min"] == 180 and l1["inbound_lateness_min"] == 30
+    assert l1["inbound_sched_slack_min"] == 210 and l1["inbound_confidence"] == 1.0
+    # the three unknown rows are byte-identical: landed inside the cutoff window, never landed, and never linked all
+    # collapse to the same encoding, because at the cutoff the model knew the same thing about all three (nothing)
+    for fn in ("L2", "L3", "L4"):
+        assert inb.loc[fn, "inbound_known"] == 0
+        assert inb.loc[fn, VALUE_COLS].isna().all(), fn
+    # a link whose arrivals row is missing still knows the turnaround, not the inbound's schedule
+    l5 = inb.loc["L5"]
+    assert l5["inbound_actual_slack_min"] == 180 and l5["inbound_confidence"] == 0.6
+    assert np.isnan(l5["inbound_lateness_min"]) and np.isnan(l5["inbound_sched_slack_min"])
+    assert inb["inbound_known"].notna().all() and inb["inbound_known"].isin((0, 1)).all()
+
+
+def test_inbound_now_gate_makes_serving_identical_to_training():
+    train = _inbound()
+    # scored 3 h before departure: the cutoff (s-2h) has not been reached, so nothing is knowable yet
+    early = _inbound(now=pd.Timestamp("2026-06-01T09:00:00Z"))
+    assert early["inbound_known"].tolist() == [0] * 5
+    assert early[VALUE_COLS].isna().all().all()
+    # scored 1 h before departure: the cutoff has passed, and the block equals what training built for the same rows
+    late = _inbound(now=pd.Timestamp("2026-06-01T11:00:00Z"))
+    pd.testing.assert_frame_equal(late, train)
+
+
+def test_inbound_features_without_links_are_the_all_missing_block():
+    fl = _flights(INBOUND_FLIGHTS)
+    for links in (None, _links([]).iloc[:0]):
+        inb = F.inbound_features(fl, links)
+        assert list(inb.columns) == F.INBOUND and inb["inbound_known"].tolist() == [0] * len(fl)
+        assert inb[VALUE_COLS].isna().all().all()
+
+
+def test_inbound_features_brute_force_cross_check():
+    fl = _flights([("A1", "CPA", "2026-06-01T02:00:00Z", "2026-06-01T02:05:00Z", "Dep"),
+                   ("A2", "CPA", "2026-06-01T06:00:00Z", "2026-06-01T06:30:00Z", "Dep"),
+                   ("A3", "HDA", "2026-06-01T09:00:00Z", None, ""),
+                   ("A4", "HDA", "2026-06-01T18:00:00Z", "2026-06-01T18:20:00Z", "Dep")])
+    links = _links([("A1", "2026-06-01T02:00:00Z", "2026-06-01T00:30:00Z", "2026-06-01T00:00:00Z", 1.0),
+                    ("A2", "2026-06-01T06:00:00Z", "2026-06-01T03:00:00Z", "2026-06-01T03:20:00Z", 0.6),
+                    ("A3", "2026-06-01T09:00:00Z", "2026-06-01T08:30:00Z", "2026-06-01T08:00:00Z", 1.0),
+                    ("A4", "2026-06-01T18:00:00Z", None, "2026-06-01T15:00:00Z", 1.0)])
+    by_no = {r.flight_no: r for r in links.itertuples(index=False)}
+    for now in (None, pd.Timestamp("2026-06-01T07:00:00Z")):
+        inb = F.inbound_features(fl, links, now=now)
+        for i, r in fl.iterrows():
+            cutoff = r["scheduled_ts"] - F.PIT_LAG
+            lk = by_no.get(r["flight_no"])
+            known = lk is not None and pd.notna(lk.arr_actual_ts) and lk.arr_actual_ts < cutoff
+            if now is not None:
+                known = known and cutoff <= now
+            assert inb.loc[i, "inbound_known"] == int(known), (r["flight_no"], now)
+            if not known:
+                assert inb.loc[i, VALUE_COLS].isna().all()
+                continue
+            assert inb.loc[i, "inbound_actual_slack_min"] == pytest.approx(
+                (r["scheduled_ts"] - lk.arr_actual_ts).total_seconds() / 60)
+            assert inb.loc[i, "inbound_lateness_min"] == pytest.approx(
+                (lk.arr_actual_ts - lk.arr_sched_ts).total_seconds() / 60)
+            assert inb.loc[i, "inbound_confidence"] == lk.confidence
+
+
+def test_build_features_inbound_block_is_optional_and_reported():
+    fl = _flights([("L1", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:10:00Z", "Dep"),
+                   ("L4", "CPA", "2026-06-01T12:00:00Z", "2026-06-01T12:10:00Z", "Dep")])
+    metar = _metar(["2026-06-01T11:00:00Z"])
+    feat, stats = F.build_features(fl, metar, EMPTY_TC)                        # no links -> nothing breaks
+    assert set(F.INBOUND) <= set(feat.columns) and stats["inbound_known_rate"] == 0.0
+    feat, stats = F.build_features(fl, metar, EMPTY_TC, links=_links(INBOUND_LINKS[:1]))
+    assert feat.loc[feat["flight_no"] == "L1", "inbound_known"].iloc[0] == 1
+    assert stats["inbound_known_rate"] == 0.5
+    assert F.FEATURES[-5:] == F.INBOUND and len(F.FEATURES) == 38
+
+
+LINKS_DDL = """
+CREATE TABLE aircraft_links (date TEXT, dep_flight_no TEXT, dep_scheduled_time TEXT, method TEXT, arr_date TEXT,
+  arr_flight_no TEXT, arr_scheduled_time TEXT, arr_actual_ts TEXT, dep_scheduled_ts TEXT, confidence REAL);
+CREATE TABLE arrivals (date TEXT, flight_no TEXT, scheduled_time TEXT, scheduled_ts TEXT);
+"""
+
+
+def _links_db():
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(LINKS_DDL)
+    conn.executemany("INSERT INTO aircraft_links VALUES (?,?,?,?,?,?,?,?,?,?)", [
+        # the SAME departure is linked by both methods -- adsb_hex must not produce a second feature row
+        ("2026-06-01", "CX 255", "20:00", "stand_gate", "2026-06-01", "CX 254", "17:00",
+         "2026-06-01T17:20:00+08:00", "2026-06-01T20:00:00+08:00", 0.6),
+        ("2026-06-01", "CX 255", "20:00", "adsb_hex", "2026-06-01", "CX 254", "17:00",
+         "2026-06-01T17:20:00+08:00", "2026-06-01T20:00:00+08:00", 1.0),
+        ("2026-06-01", "UO 674", "09:10", "stand_gate", "2026-06-01", "UO 673", "06:00",
+         "2026-06-01T05:36:00+08:00", "2026-06-01T09:10:00+08:00", 1.0)])
+    conn.execute("INSERT INTO arrivals VALUES ('2026-06-01','CX 254','17:00','2026-06-01T17:00:00+08:00')")
+    return conn
+
+
+def test_load_links_is_one_row_per_departure_and_ignores_adsb_hex():
+    links = F.load_links(_links_db())
+    assert list(links.columns) == F.LINK_COLS
+    assert not links.duplicated(["date", "flight_no", "scheduled_ts"]).any()
+    assert links["flight_no"].tolist() == ["CX 255", "UO 674"]
+    cx = links[links["flight_no"] == "CX 255"].iloc[0]
+    assert cx["confidence"] == 0.6                                    # the stand_gate row, not the adsb_hex one
+    assert cx["arr_sched_ts"] == pd.Timestamp("2026-06-01T09:00:00Z")  # 17:00 +08:00
+    assert pd.isna(links[links["flight_no"] == "UO 674"].iloc[0]["arr_sched_ts"])   # no arrivals row -> NaT, not a drop
+
+
+def test_load_links_survives_a_database_without_the_table():
+    links = F.load_links(sqlite3.connect(":memory:"))
+    assert list(links.columns) == F.LINK_COLS and links.empty
+    assert isinstance(links["scheduled_ts"].dtype, pd.DatetimeTZDtype) and links["confidence"].dtype == float
+    fl = _flights(INBOUND_FLIGHTS)
+    assert F.inbound_features(fl, links)["inbound_known"].tolist() == [0] * len(fl)
+
+
+def test_links_event_source_needs_both_a_sched_and_a_whole_window_rebuild():
+    conn = sqlite3.connect(":memory:")
+    log = "INSERT INTO ingest_log VALUES (?,'rotations',?)"
+    assert F.links_event_source(conn) == "actual"                     # no ingest_log at all
+    conn.execute("CREATE TABLE ingest_log (run_at TEXT, job TEXT, detail TEXT)")
+    assert F.links_event_source(conn) == "actual"
+    # a one-date --events sched run leaves the other ~90 days paired on actual departure times: not leak-free
+    conn.execute(log, ("2026-06-01T00:00:00+00:00", "2 dates, 537 linked, events=sched"))
+    assert F.links_event_source(conn) == "actual"
+    conn.execute(log, ("2026-06-02T00:00:00+00:00", "92 dates, 32k linked, events=sched, scope=all"))
+    assert F.links_event_source(conn) == "sched"
+    conn.execute(log, ("2026-06-03T00:00:00+00:00", "92 dates, 32k linked, scope=all"))
+    assert F.links_event_source(conn) == "actual"                     # whole window, but paired on actual times
+    conn.execute(log, ("2026-06-04T00:00:00+00:00", "2 dates, 537/905 departures linked"))
+    assert F.links_event_source(conn) == "actual"                     # the LATEST run is what the parquet was built on
 
 
 def test_tc_signal_active_window():

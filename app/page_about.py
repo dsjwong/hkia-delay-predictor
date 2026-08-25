@@ -16,7 +16,7 @@ def render() -> None:
 1. GitHub Actions cron (`ingest.yml`, every 30 min, $0) checks out this repo and pulls the live SQLite db from the repo's `data` GitHub Release (`hkia.dbsync`).
 2. `hkia.ingest_flights` pulls yesterday/today/tomorrow's departures from the Airport Authority flight-info API on data.gov.hk (scheduled vs actual = the label).
 3. `hkia.ingest_weather` pulls the latest VHHH METAR (aviationweather.gov) and HKO current readings + warnings (typhoon signals) into SQLite `data/hkia.db`.
-4. `hkia.features` builds the same 33 features for training and inference (calendar, airline/destination, congestion, as-of weather, point-in-time rolling delays).
+4. `hkia.features` builds the same 38 features for training and inference (calendar, airline/destination, congestion, as-of weather, point-in-time rolling delays, and an inbound-aircraft block active only inside ~2 h of departure).
 5. `hkia.train` (offline, occasionally) fits baselines + XGBoost on a date-ordered split → `models/`, `reports/M2-results.md`.
 6. `hkia.predict` (every cron run) scores every not-yet-departed flight for today + tomorrow → table `predictions` (history kept).
 7. A daily job (`backfill.yml`) tops up METAR history (IEM) + typhoon-signal history and runs `hkia.evaluate` (last score before departure vs actual).

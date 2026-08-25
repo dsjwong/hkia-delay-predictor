@@ -7,10 +7,13 @@ Rules (see docs/features.md for the full dictionary):
 - cancelled flights are kept with cancelled=1 and NaN label; unlabelled (in-progress/blank status) rows are dropped
 - weather = latest METAR observation strictly before scheduled time (asof join, 3 h tolerance)
 - rolling delay features are point-in-time: only flights whose actual_ts < scheduled_ts - 2 h contribute
+- inbound (turnaround) features use the linked inbound aircraft only if it was on blocks before scheduled_ts - 2 h
 """
 import argparse
 import datetime as dt
+import json
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -34,8 +37,11 @@ NUMERIC = ["sched_hour", "sched_dow", "sched_minute_of_day", "is_holiday", "is_w
            "wx_rain", "wx_ts", "wx_fog", "metar_age_min",
            "tc_signal", "msn_signal",
            "airline_prevday_mean_delay", "airline_prevday_n", "airline_sameday_mean_delay", "airline_sameday_n",
-           "airport_sameday_mean_delay", "airport_sameday_n"]
+           "airport_sameday_mean_delay", "airport_sameday_n",
+           "inbound_known", "inbound_actual_slack_min", "inbound_lateness_min", "inbound_sched_slack_min",
+           "inbound_confidence"]
 FEATURES = CATEGORICAL + NUMERIC
+INBOUND = [f for f in NUMERIC if f.startswith("inbound_")]
 
 
 # ---------- loading ----------
@@ -86,6 +92,56 @@ def load_tc_signals(conn) -> pd.DataFrame:
     tc["start_ts"] = pd.to_datetime(tc["start_ts"], utc=True)
     tc["end_ts"] = pd.to_datetime(tc["end_ts"], utc=True)
     return tc
+
+
+LINK_COLS = ["date", "flight_no", "scheduled_ts", "arr_actual_ts", "confidence", "arr_sched_ts"]
+LINKS_SQL = """
+SELECT l.date, l.dep_flight_no AS flight_no, l.dep_scheduled_ts AS scheduled_ts,
+       l.arr_actual_ts, l.confidence, a.scheduled_ts AS arr_sched_ts
+FROM aircraft_links l
+LEFT JOIN arrivals a ON a.date=l.arr_date AND a.flight_no=l.arr_flight_no
+                    AND a.scheduled_time=l.arr_scheduled_time
+WHERE l.method='stand_gate'
+"""
+
+
+def load_links(conn) -> pd.DataFrame:
+    """Inbound-aircraft links, one row per departure — the `stand_gate` proxy only.
+
+    `method='stand_gate'` is the only method with history over the whole backfill; `adsb_hex` links exist for a few
+    hundred recent departures and are validation-only, so they are filtered out here rather than de-duplicated later
+    (both methods can link the same departure, which would otherwise duplicate feature rows). The arrivals join adds
+    the inbound's *scheduled* arrival time, which is immutable and therefore safe to use at any horizon.
+    Empty (typed) frame when the table does not exist yet — fresh databases and test fixtures.
+    """
+    try:
+        has = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='aircraft_links'").fetchone()
+    except sqlite3.Error:
+        has = None
+    df = pd.read_sql_query(LINKS_SQL, conn) if has else pd.DataFrame(columns=LINK_COLS)
+    for c in ("scheduled_ts", "arr_actual_ts", "arr_sched_ts"):
+        df[c] = pd.to_datetime(df[c], utc=True, format="ISO8601")
+    df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce").astype(float)
+    for c in ("date", "flight_no"):
+        df[c] = df[c].astype(str)
+    return df[LINK_COLS]
+
+
+def links_event_source(conn) -> str:
+    """'sched' only when the latest `rotations` run rebuilt links from scheduled departure times **over the whole
+    window**, else 'actual'.
+
+    `hkia.rotations --events sched` marks its ingest_log detail with `events=sched`, and an `--all` run adds
+    `scope=all`. Both markers are required: a one-date `--events sched` run leaves the other ~90 days of
+    `aircraft_links` paired on *actual* departure times, which are label-dependent, and would otherwise mark the whole
+    parquet leak-free on the strength of a single day (see docs/inbound-feature.md).
+    """
+    try:
+        row = conn.execute("SELECT detail FROM ingest_log WHERE job='rotations' ORDER BY run_at DESC LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return "actual"
+    detail = row[0] if row and row[0] else ""
+    return "sched" if "events=sched" in detail and "scope=all" in detail else "actual"
 
 
 # ---------- feature blocks ----------
@@ -177,16 +233,56 @@ def rolling_delay_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def inbound_features(df: pd.DataFrame, links: pd.DataFrame | None, now: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Turnaround block from the linked inbound aircraft — point-in-time at `scheduled_ts - PIT_LAG`.
+
+    The inbound counts only when it was **on blocks strictly before the cutoff**; its on-blocks time is otherwise the
+    future (the aircraft may land after the cutoff, or never). `now` additionally gates on the cutoff having been
+    reached at all, which is what makes serving identical to training: a flight scored 5 h out gets the same all-missing
+    block a flight with no link gets, because at that moment nothing about the inbound is knowable under this rule.
+
+    Encoding: `inbound_known` is a real 0/1 (never NaN, never imputed), the four value features are NaN whenever it is 0
+    and ride XGBoost's native missing branch. A link whose arrivals row is absent (`arr_sched_ts` NaT) still yields
+    `inbound_known` and `inbound_actual_slack_min`; the two scheduled-arrival features stay NaN.
+    """
+    keys = ["date", "flight_no", "scheduled_ts"]
+    if links is None or not len(links):
+        nat = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")   # tz-aware: compared against a UTC cutoff
+        m = pd.DataFrame({"arr_actual_ts": nat, "arr_sched_ts": nat, "confidence": np.nan}, index=df.index)
+    else:
+        m = df[keys].merge(links[LINK_COLS], on=keys, how="left", validate="one_to_one")
+        assert len(m) == len(df), f"inbound link merge changed the row count: {len(df)} -> {len(m)}"
+        m.index = df.index
+
+    cutoff = df["scheduled_ts"] - PIT_LAG
+    known = m["arr_actual_ts"].notna() & (m["arr_actual_ts"] < cutoff)
+    if now is not None:
+        known &= cutoff <= pd.Timestamp(now)
+    minutes = lambda a, b: (a - b).dt.total_seconds() / 60  # noqa: E731 - signed gap in minutes
+    out = pd.DataFrame(index=df.index)
+    out["inbound_known"] = known.astype(int)
+    out["inbound_actual_slack_min"] = minutes(df["scheduled_ts"], m["arr_actual_ts"]).where(known)
+    out["inbound_lateness_min"] = minutes(m["arr_actual_ts"], m["arr_sched_ts"]).where(known)
+    out["inbound_sched_slack_min"] = minutes(df["scheduled_ts"], m["arr_sched_ts"]).where(known)
+    out["inbound_confidence"] = m["confidence"].where(known)
+    return out
+
+
 # ---------- assembly ----------
 
 def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
                    top_dest_n: int = TOP_DEST_N, top_dest: set | None = None,
-                   keep_unlabelled: bool = False) -> tuple[pd.DataFrame, dict]:
+                   keep_unlabelled: bool = False, links: pd.DataFrame | None = None,
+                   now: pd.Timestamp | None = None) -> tuple[pd.DataFrame, dict]:
     """Shared by training (`hkia.features`) and inference (`hkia.predict`).
 
     top_dest: explicit set of destinations kept as their own category (inference passes the training set so the
               `dest` encoding matches the model); default = top `top_dest_n` by frequency in `flights`.
     keep_unlabelled: keep rows without a label (not-yet-departed / blank status) — needed for inference; training drops them.
+    links: `load_links(conn)` output for the inbound block; None (the default) yields the same all-missing block an
+           unlinked flight gets, so every caller keeps working without an `aircraft_links` table.
+    now: scoring time (tz-aware UTC). Only inbound state whose cutoff has been reached by `now` is used — see
+         `inbound_features`. None = training mode (no serve-time gate).
     """
     df = flights.copy()
     df["delay_min"] = (df["actual_ts"] - df["scheduled_ts"]).dt.total_seconds() / 60
@@ -201,6 +297,7 @@ def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
     wx = weather_asof(df, metar)
     tcf = tc_features(df["scheduled_ts"], tc)
     roll = rolling_delay_features(df)
+    inb = inbound_features(df, links, now)
 
     first_dest = df["destination"].fillna("").str.split(",").str[0]
     top = set(top_dest) if top_dest is not None else set(first_dest.value_counts().head(top_dest_n).index)
@@ -213,7 +310,7 @@ def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
         "n_dest_legs": df["destination"].fillna("").str.count(",") + 1,
         "cancelled": df["cancelled"], "delay_min": df["delay_min"],
     }, index=df.index)
-    feat = pd.concat([base, cal, cong, wx, tcf, roll], axis=1)
+    feat = pd.concat([base, cal, cong, wx, tcf, roll, inb], axis=1)
     feat["delayed15"] = (feat["delay_min"] > 15).astype("float").where(feat["delay_min"].notna())
     feat["flt_cat"] = feat["flt_cat"].fillna("UNK")
 
@@ -225,7 +322,8 @@ def build_features(flights: pd.DataFrame, metar: pd.DataFrame, tc: pd.DataFrame,
     feat = feat.loc[keep].reset_index(drop=True)
     stats.update(n_rows=len(feat), n_departed=int((feat["cancelled"] == 0).sum()), n_cancelled=int(feat["cancelled"].sum()),
                  date_min=feat["date"].min(), date_max=feat["date"].max(),
-                 weather_coverage=float(feat["temp_c"].notna().mean()))
+                 weather_coverage=float(feat["temp_c"].notna().mean()),
+                 inbound_known_rate=float(feat["inbound_known"].mean()) if len(feat) else 0.0)
     return feat, stats
 
 
@@ -236,12 +334,17 @@ def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     conn = connect()
     flights, metar, tc = load_flights(conn), load_metar(conn), load_tc_signals(conn)
-    log.info("flights %d, metar obs %d (%s..%s), tc rows %d", len(flights), len(metar),
-             metar["report_time"].min(), metar["report_time"].max(), len(tc))
-    feat, stats = build_features(flights, metar, tc)
+    links, src = load_links(conn), links_event_source(conn)
+    log.info("flights %d, metar obs %d (%s..%s), tc rows %d, inbound links %d (events=%s)", len(flights), len(metar),
+             metar["report_time"].min(), metar["report_time"].max(), len(tc), len(links), src)
+    feat, stats = build_features(flights, metar, tc, links=links)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     feat.to_parquet(a.out, index=False)
-    log.info("wrote %s: %s", a.out, stats)
+    # the parquet alone cannot say whether its links were rebuilt leak-free; the gate reads this instead
+    meta = {"built_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "rows": int(len(feat)),
+            "links_event_source": src, "inbound_known_rate": round(stats["inbound_known_rate"], 4)}
+    Path(a.out).with_suffix(".meta.json").write_text(json.dumps(meta, indent=2))
+    log.info("wrote %s: %s (meta %s)", a.out, stats, meta)
     return 0
 
 

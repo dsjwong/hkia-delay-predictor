@@ -241,8 +241,10 @@ def render() -> None:
     st.markdown(
         "- **Weather = latest observation, not a forecast.** Every future flight is scored with the most recent VHHH METAR "
         "(persistence, capped at 3 h of age). A storm forecast for the evening does not move the morning's numbers.\n"
-        "- **Departures only, no arrivals, no ADS-B in the model.** The single strongest real-world predictor — the inbound aircraft running late — "
-        "is not a feature yet (the live map shows ADS-B but does not feed the model).\n"
+        "- **The inbound aircraft is only half a feature.** Whether the inbound was already on stand ~2 h before departure *is* in the model "
+        "(a long-turnaround indicator, inferred from shared stand/gate numbers); day-ahead flights have no stand published yet, so they score without it.\n"
+        "- **Still blind to a late-running inbound.** How late the inbound actually is — the strongest real-world predictor — needs its arrival "
+        "estimate as known at scoring time, which is only now being recorded (phase 3). The live map shows ADS-B but does not feed the model.\n"
         "- **Rolling 91-day window, one season.** The data.gov.hk API keeps ~91 days; the training set (May–Aug 2026) has one typhoon "
         "(Noul, 25–26 Jul) in the validation split, so typhoon effects are learned from a handful of days and unconfirmed on test.\n"
         "- **Survivorship / churn.** Cancelled flights are excluded from the delay label; the schedule for tomorrow can still change.\n"

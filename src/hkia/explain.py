@@ -185,6 +185,9 @@ LABELS: dict[str, str] = {
     "airline_prevday_mean_delay": "Airline yesterday", "airline_prevday_n": "Airline history yesterday",
     "airline_sameday_mean_delay": "Airline today", "airline_sameday_n": "Airline history today",
     "airport_sameday_mean_delay": "HKIA today", "airport_sameday_n": "HKIA history today",
+    "inbound_known": "Inbound aircraft", "inbound_actual_slack_min": "Turnaround time",
+    "inbound_lateness_min": "Inbound lateness", "inbound_sched_slack_min": "Scheduled turnaround",
+    "inbound_confidence": "Inbound link confidence",
 }
 
 _REGION_NAMES = {
@@ -260,11 +263,29 @@ TEMPLATES: dict[str, Callable[[Any], str]] = {
     "airline_sameday_n": lambda v: f"{_i(v)} of this airline's flights have departed today so far",
     "airport_sameday_mean_delay": lambda v: f"HKIA is running {_late(v)} today so far",
     "airport_sameday_n": lambda v: f"{_i(v)} departures have left HKIA today so far",
+    # -- inbound aircraft (the turnaround block; only knowable from ~2 h before the scheduled time, see docs/features.md)
+    # These say what the *stand data* showed at the cutoff, not that the aircraft is late — the block is a long-turnaround
+    # indicator and is blind to an inbound still in the air (docs/inbound-feature.md).
+    "inbound_known": lambda v: ("the inbound aircraft was already on stand 2 h before departure" if _i(v)
+                                else INBOUND_NOT_ON_STAND),
+    "inbound_actual_slack_min": lambda v: f"{_i(v)} min between the inbound arriving and this departure",
+    "inbound_lateness_min": lambda v: f"the inbound arrived {_late(v)}",
+    "inbound_sched_slack_min": lambda v: f"{_i(v)} min scheduled turnaround",
+    "inbound_confidence": lambda v: f"inbound link confidence {float(v):.2f} (stand/gate proxy)",
 }
 
 
 # A missing value is itself informative here (no observation, no history yet), so it gets its own hand-written line.
 NO_METAR = "no METAR on file near the scheduled time"
+# the inbound block collapses to exactly this state for three different rows — no link, the inbound not yet on blocks
+# at the cutoff, and (when scoring) the cutoff not reached yet — so all three read the same, which is honest: at that
+# moment the model knew nothing about the aircraft.
+# hedged for the same reason as INBOUND_MISSING: an unlinked departure may well have had its aircraft on stand — we
+# just could not identify which one, and the card must not report our ignorance as the aircraft's absence
+INBOUND_NOT_ON_STAND = "no inbound aircraft known to be on stand 2 h before departure"
+# strictly true for BOTH rows that land here: the linked inbound had not gone on blocks by the cutoff, *and* the
+# departure that has no link at all (about which we know nothing, not that its aircraft was late)
+INBOUND_MISSING = "no inbound aircraft was known to be on stand 2 h before departure"
 MISSING: dict[str, str] = {
     "airline": "operating carrier not on the schedule",
     "dest": "no destination on the schedule",
@@ -278,6 +299,9 @@ MISSING: dict[str, str] = {
     "airline_prevday_mean_delay": "no flights on file for this airline the day before",
     "airline_sameday_mean_delay": "none of this airline's flights have departed yet that day",
     "airport_sameday_mean_delay": "no HKIA departures recorded yet that day",
+    "inbound_known": INBOUND_NOT_ON_STAND,
+    "inbound_actual_slack_min": INBOUND_MISSING, "inbound_lateness_min": INBOUND_MISSING,
+    "inbound_sched_slack_min": INBOUND_MISSING, "inbound_confidence": INBOUND_MISSING,
 }
 
 

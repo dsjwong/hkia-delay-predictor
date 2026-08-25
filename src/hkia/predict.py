@@ -4,6 +4,8 @@ Usage:
   python -m hkia.predict                      # today + tomorrow (HKT), flights without actual_ts and not cancelled
   python -m hkia.predict --date 2026-08-18    # one or more explicit dates
   python -m hkia.predict --include-departed   # score every flight of the target dates (backtest / debugging)
+  python -m hkia.predict --models models.cand --summary-json /tmp/cand.json   # score a candidate build, write its
+                                              # per-horizon summary (the ship gate's drift check reads two of these)
 
 Pipeline: models/ (xgb_delayed15 + xgb_delay_min + MANIFEST.json, written by hkia.train) -> the SAME feature builder as
 training (`hkia.features.build_features` over the whole flights table, so congestion + point-in-time rolling delay
@@ -20,6 +22,11 @@ Weather for flights in the future: the as-of join has nothing after "now", so th
 (persistence forecast; `metar_age_min` capped at the training tolerance of 180 min). Limitation, not a forecast — TAF is a
 stretch goal. Rolling delay features for future flights only see flights that have already departed *as of now*, which is
 a slightly narrower history than the training-time cutoff (scheduled - 2 h); documented in docs/features.md.
+
+The inbound (turnaround) block is passed the scoring timestamp, so a flight whose scheduled - 2 h cutoff has not been
+reached yet scores with the same all-missing block an unlinked flight gets — train and serve agree by construction. Its
+coverage per forecast-horizon bucket goes into the ingest_log detail every run: that number is the drift monitor for the
+dropout rate the model was trained with (`hkia.train --inbound-dropout`).
 """
 import argparse
 import datetime as dt
@@ -35,7 +42,7 @@ import pandas as pd
 
 from . import explain
 from .db import ROOT, connect
-from .features import build_features, load_flights, load_metar, load_tc_signals, weather_asof
+from .features import build_features, load_flights, load_links, load_metar, load_tc_signals, weather_asof
 from .train import to_matrix
 
 log = logging.getLogger("hkia.predict")
@@ -60,6 +67,10 @@ CREATE TABLE IF NOT EXISTS predictions (
 # (the former ix_pred_flight index duplicated the primary-key autoindex column for column; dropped by hkia.compact_predictions)
 MIN_DELTA_P = 0.01      # a new score is stored only if it moves p_delay15 by >= this ...
 MIN_DELTA_MIN = 1.0     # ... or pred_delay_min by >= this (minutes), relative to the latest stored row
+# forecast-horizon buckets (minutes between scoring time and the *scheduled* departure) for the inbound coverage
+# monitor: the logged three go into ingest_log every run, the four in the summary feed the ship gate's drift check.
+LOG_HORIZONS = ((None, 30, "<30min"), (30, 120, "30-120min"), (120, None, ">120min"))
+SUMMARY_HORIZONS = ((None, 30, "<30min"), (30, 120, "30-120min"), (120, 720, "120min-12h"), (720, None, ">12h"))
 
 
 def load_models(models_dir: Path = MODELS_DIR) -> dict:
@@ -100,7 +111,10 @@ def score(conn, models: dict, dates: list[str], include_departed: bool = False,
     flights, metar, tc = load_flights(conn), load_metar(conn), load_tc_signals(conn)
     clf = models["clf"]
     top_dest = set(clf["cats"]["dest"].categories) - {"OTHER"}
-    feat, stats = build_features(flights, metar, tc, top_dest=top_dest, keep_unlabelled=True)
+    # `now` gates the inbound block: a flight whose scheduled - 2 h cutoff has not been reached scores exactly as an
+    # unlinked flight, which is the encoding it was trained under (hkia.features.inbound_features).
+    feat, stats = build_features(flights, metar, tc, top_dest=top_dest, keep_unlabelled=True,
+                                 links=load_links(conn), now=now_ts)
     feat, wx_time = apply_latest_weather(feat, metar, now_ts)
     sel = feat["date"].isin(dates) & (feat["cancelled"] == 0)
     if not include_departed:
@@ -127,6 +141,35 @@ def score(conn, models: dict, dates: list[str], include_departed: bool = False,
                                                    default=str).encode()).hexdigest()
                             for row in tgt[clf["features"]].itertuples(index=False, name=None)]
     return tgt
+
+
+def horizon_stats(tgt: pd.DataFrame, now: dt.datetime, horizons=SUMMARY_HORIZONS) -> dict:
+    """Per forecast-horizon bucket: n, mean p_delay15, mean inbound_known — the serve-time coverage / drift monitor.
+
+    Horizon is scoring time -> *scheduled* departure (never -> actual, which would slice by the outcome). The inbound
+    block is knowable only inside ~2 h of the scheduled time, so its coverage per bucket is what tells us whether the
+    dropout rate the model was trained with still matches deployment (see hkia.train.mask_inbound).
+    """
+    if not len(tgt):
+        return {label: {"n": 0, "p_mean": None, "inbound_known": None} for _, _, label in horizons}
+    h = (tgt["scheduled_ts"] - pd.Timestamp(now).tz_convert("UTC")).dt.total_seconds() / 60
+    known = tgt["inbound_known"] if "inbound_known" in tgt.columns else pd.Series(np.nan, index=tgt.index)
+    out = {}
+    all_rows = pd.Series(True, index=h.index)
+    for lo, hi, label in horizons:
+        s = (h >= lo if lo is not None else all_rows) & (h < hi if hi is not None else all_rows)
+        n = int(s.sum())
+        out[label] = {"n": n,
+                      "p_mean": round(float(tgt.loc[s, "p_delay15"].mean()), 4) if n else None,
+                      "inbound_known": round(float(known[s].mean()), 4) if n and known.notna().any() else None}
+    return out
+
+
+def inbound_coverage(tgt: pd.DataFrame, now: dt.datetime) -> str:
+    """One-line inbound coverage by horizon for the ingest_log detail string."""
+    st = horizon_stats(tgt, now, LOG_HORIZONS)
+    parts = [f"{k} {v['inbound_known'] if v['inbound_known'] is not None else 'n/a'} (n={v['n']})" for k, v in st.items()]
+    return "inbound_known " + ", ".join(parts)
 
 
 def hour_key(scored_at: str) -> str:
@@ -183,7 +226,8 @@ def write_predictions(conn, tgt: pd.DataFrame, version: str, now: dt.datetime, d
     conn.executemany("DELETE FROM predictions WHERE date=? AND flight_no=? AND scheduled_ts=? AND scored_at=?", drop)
     conn.executemany("INSERT OR REPLACE INTO predictions VALUES (?,?,?,?,?,?,?,?)", rows)
     conn.execute("INSERT INTO ingest_log VALUES (?,?,?)",
-                 (scored_at, "predict", f"{len(tgt)} scored, {len(rows)} written ({len(drop)} replaced same-hour rows), {version}"))
+                 (scored_at, "predict", f"{len(tgt)} scored, {len(rows)} written ({len(drop)} replaced same-hour rows), "
+                                        f"{version}, {inbound_coverage(tgt, now)}"))
     conn.commit()
     return len(rows)
 
@@ -209,7 +253,9 @@ def main(argv=None):
     ap.add_argument("--date", action="append", help="YYYY-MM-DD (repeatable); default today + tomorrow HKT")
     ap.add_argument("--include-departed", action="store_true")
     ap.add_argument("--no-dedupe", action="store_true", help="append every score unconditionally (debugging)")
-    ap.add_argument("--models", default=str(MODELS_DIR))
+    ap.add_argument("--models", default=str(MODELS_DIR), help="model directory (a candidate build can be scored "
+                                                              "against a scratch db without touching models/)")
+    ap.add_argument("--summary-json", help="write the per-horizon scoring summary here (input to scripts/inbound_gate.py)")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     now = dt.datetime.now(dt.timezone.utc)
@@ -219,6 +265,13 @@ def main(argv=None):
     n = write_predictions(conn, tgt, models["version"], now, dedupe=not a.no_dedupe)
     n_why = write_explanations(conn, tgt, models["version"], now, prune_old=not a.date)
     log.info("explanations: %d rows written (latest only, unchanged ones skipped), %d pruned outside yesterday..tomorrow", *n_why)
+    if a.summary_json:
+        summary = {"scored_at": now.isoformat(timespec="seconds"), "models": str(Path(a.models)),
+                   "model_version": models["version"], "dates": target_dates(a.date, now), "n": int(len(tgt)),
+                   "p_delay15_mean": round(float(tgt["p_delay15"].mean()), 4) if len(tgt) else None,
+                   "horizon": horizon_stats(tgt, now)}
+        Path(a.summary_json).write_text(json.dumps(summary, indent=2))
+        log.info("wrote %s", a.summary_json)
     if len(tgt):
         p = tgt["p_delay15"]
         log.info("scored %d flights, wrote %d rows (model %s); p_delay15 mean %.3f, quantiles 10/50/90 = %.3f/%.3f/%.3f, "

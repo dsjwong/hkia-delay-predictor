@@ -104,7 +104,7 @@ def test_saved_model_supports_pred_contribs():
 
 
 # ---------------------------------------------------------------- templates
-NOT_A_FEATURE = {"metar", "metar_hist", "tc_signals"}   # db tables named in the same section
+NOT_A_FEATURE = {"metar", "metar_hist", "tc_signals", "aircraft_links", "arrivals"}   # db tables named in the section
 DOC_ONLY = {"sched_month"}                   # documented as present in the parquet but excluded from FEATURES
 
 
@@ -116,7 +116,7 @@ def _documented_features() -> set[str]:
 def test_every_feature_has_a_label_and_a_template():
     assert set(E.TEMPLATES) == set(FEATURES), "TEMPLATES must cover FEATURES exactly"
     assert set(E.LABELS) == set(FEATURES), "LABELS must cover FEATURES exactly"
-    assert len(FEATURES) == 33
+    assert len(FEATURES) == 38
     missing = _documented_features() - set(E.TEMPLATES) - DOC_ONLY
     assert not missing, f"documented in docs/features.md but no template in hkia.explain: {sorted(missing)}"
 
@@ -130,7 +130,9 @@ def test_templates_render_plain_english_for_a_plausible_value():
               "tc_signal": 8, "msn_signal": 0,
               "airline_prevday_mean_delay": 12.4, "airline_prevday_n": 38,
               "airline_sameday_mean_delay": -3.2, "airline_sameday_n": 14,
-              "airport_sameday_mean_delay": 11.0, "airport_sameday_n": 221}
+              "airport_sameday_mean_delay": 11.0, "airport_sameday_n": 221,
+              "inbound_known": 1, "inbound_actual_slack_min": 95.0, "inbound_lateness_min": 22.0,
+              "inbound_sched_slack_min": 73.0, "inbound_confidence": 0.6}
     assert set(sample) == set(FEATURES)
     for f, v in sample.items():
         s = E.line(f, v)
@@ -151,6 +153,22 @@ def test_templates_render_plain_english_for_a_plausible_value():
     assert E.line("metar_age_min", float("inf")).startswith("Observation age =")
     assert E.line("tc_signal", 8) == "tropical-cyclone signal 8 in force"
     assert "Cathay" in E.line("airline", "CPA") and "Taipei" in E.line("dest", "TPE")
+
+
+def test_inbound_templates_state_what_was_known_at_the_cutoff():
+    """The inbound block is a long-turnaround indicator, not an 'is the inbound late' feature — the card must say
+    what the stand data showed 2 h out, and must read the same for 'no link' as for 'not landed yet' (both are
+    inbound_known = 0 / NaN at scoring time; see hkia.features.inbound_features)."""
+    assert E.line("inbound_known", 1) == "the inbound aircraft was already on stand 2 h before departure"
+    assert E.line("inbound_known", 0) == E.INBOUND_NOT_ON_STAND == E.line("inbound_known", None)
+    assert E.line("inbound_actual_slack_min", 95.0) == "95 min between the inbound arriving and this departure"
+    assert E.line("inbound_lateness_min", 22.0) == "the inbound arrived 22 min late"
+    assert E.line("inbound_lateness_min", -6.0) == "the inbound arrived 6 min early"
+    assert E.line("inbound_sched_slack_min", 73.0) == "73 min scheduled turnaround"
+    assert E.line("inbound_confidence", 0.6) == "inbound link confidence 0.60 (stand/gate proxy)"
+    for f in ("inbound_actual_slack_min", "inbound_lateness_min", "inbound_sched_slack_min", "inbound_confidence"):
+        assert E.line(f, None) == E.INBOUND_MISSING == E.line(f, float("nan"))
+        assert not E.line(f, 5.0).startswith(E.LABELS[f]), "fell through to the `feature = value` fallback"
 
 
 def test_missing_values_get_their_own_line_and_nothing_raises():

@@ -14,7 +14,7 @@ in-progress status (not yet departed) are dropped. Times in the parquet are UTC;
 | `delay_min` | **regression label** = actual − scheduled in minutes; rows < −60 or > 600 are dropped and counted (44 in the first build: 1 low, 43 high) |
 | `delayed15` | **classification label** = `delay_min > 15` |
 
-## Model features (33) — `hkia.features.FEATURES`
+## Model features (38) — `hkia.features.FEATURES`
 Categorical (XGBoost native categoricals; categories fixed from the train split, unseen → missing):
 | column | meaning |
 |---|---|
@@ -59,6 +59,24 @@ Rolling delay features — **point-in-time**: only flights whose `actual_ts < sc
 | `airline_sameday_mean_delay`, `airline_sameday_n` | same, for the same day |
 | `airport_sameday_mean_delay`, `airport_sameday_n` | all airlines, same day |
 
+Inbound aircraft (turnaround) — from `aircraft_links` (`method='stand_gate'` only; `method='adsb_hex'` links are validation-only,
+see [`inbound-feature.md`](inbound-feature.md)) joined to `arrivals` for the inbound's scheduled arrival.
+**Same point-in-time cutoff as the rolling block**: the inbound counts only if it was **on blocks strictly before
+`scheduled_ts − 2 h`**. An inbound that goes on blocks after the cutoff, one that never lands, and a departure with no
+link at all are all encoded identically — because at the cutoff the model knew the same thing about all three (nothing).
+| column | meaning |
+|---|---|
+| `inbound_known` | 1 if the linked inbound was on blocks before the cutoff, else 0. **Always 0/1, never NaN and never imputed** — missingness is the signal, so it gets its own feature |
+| `inbound_actual_slack_min` | scheduled departure − inbound on-blocks, i.e. the turnaround the aircraft actually got |
+| `inbound_lateness_min` | inbound on-blocks − inbound scheduled arrival (signed; NaN when the arrivals row is absent) |
+| `inbound_sched_slack_min` | scheduled departure − inbound scheduled arrival, i.e. the *planned* turnaround |
+| `inbound_confidence` | link confidence from `hkia.rotations` (1.0 unambiguous, 0.6 when two departures fitted one arrival) |
+
+The four value columns are **NaN whenever `inbound_known` is 0** and ride XGBoost's native missing branch; zeros are
+never imputed. Because the stand is published only ~2–3 h ahead and the cutoff is 2 h, this block is a *long-turnaround
+indicator* for short-horizon scoring — it is blind to an inbound that is still in the air. Training compensates for the
+coverage gap with `hkia.train --inbound-dropout`; the ship decision is gated by `scripts/inbound_gate.py`.
+
 ## Weather backfill (`python -m hkia.backfill_weather`)
 - `metar_hist`: IEM ASOS `asos.py` request, `station=VHHH`, `report_type=3` (routine hourly METAR), `tz=Etc/UTC`, fetched in monthly
   chunks with retry on the frequent "server over capacity" 503. First run: 2,249 obs, 2026-05-15T00Z .. 2026-08-16T16Z (99.7% of hours).
@@ -73,7 +91,11 @@ Same `build_features` call over the whole flights table with `keep_unlabelled=Tr
 was trained with, so congestion, calendar and point-in-time rolling features are computed identically. Differences that are inherent to
 scoring ahead of time: (1) rows scheduled after "now" get the latest METAR observation instead of the as-of observation, with
 `metar_age_min` capped at 180; (2) the rolling delay features only see flights that have already departed as of scoring time, which for a
-flight several hours out is fewer than the training-time cutoff of scheduled − 2 h. Predictions are appended to `predictions`
+flight several hours out is fewer than the training-time cutoff of scheduled − 2 h. (3) The inbound block is additionally **gated on "now"**:
+`build_features(..., now=<scoring time>)` uses inbound state only for flights whose scheduled − 2 h cutoff has already been reached, so a
+flight scored five hours out gets the same all-missing block an unlinked flight gets — never a value the airport had not published yet.
+Serve-time inbound coverage per forecast-horizon bucket is logged to `ingest_log` on every run, which is the drift monitor for the
+`--inbound-dropout` rate the model was trained with. Predictions are appended to `predictions`
 (`features_hash` = md5 of the feature vector; a flight is re-scored only when it changes) and evaluated by `hkia.evaluate`.
 
 ## Per-flight explanations (`hkia.explain`)

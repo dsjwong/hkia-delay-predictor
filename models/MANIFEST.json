@@ -1,6 +1,6 @@
 {
-  "created_at": "2026-08-16T16:13:29+00:00",
-  "git_sha": "2e00760",
+  "created_at": "2026-08-25T09:35:34+00:00",
+  "git_sha": "4a4212f",
   "xgboost": "3.4.1",
   "features": [
     "airline",
@@ -35,7 +35,12 @@
     "airline_sameday_mean_delay",
     "airline_sameday_n",
     "airport_sameday_mean_delay",
-    "airport_sameday_n"
+    "airport_sameday_n",
+    "inbound_known",
+    "inbound_actual_slack_min",
+    "inbound_lateness_min",
+    "inbound_sched_slack_min",
+    "inbound_confidence"
   ],
   "categorical": [
     "airline",
@@ -47,28 +52,31 @@
   "split": {
     "train": {
       "date_min": "2026-05-16",
-      "date_max": "2026-07-19",
-      "n_rows": 27135,
-      "n_dates": 65,
-      "delayed15_rate": 0.2747
+      "date_max": "2026-07-25",
+      "n_rows": 29803,
+      "n_dates": 71,
+      "delayed15_rate": 0.2771,
+      "inbound_known_rate": 0.2469
     },
     "val": {
-      "date_min": "2026-07-20",
-      "date_max": "2026-08-02",
-      "n_rows": 6093,
-      "n_dates": 14,
-      "delayed15_rate": 0.4
+      "date_min": "2026-07-26",
+      "date_max": "2026-08-10",
+      "n_rows": 6991,
+      "n_dates": 16,
+      "delayed15_rate": 0.3725,
+      "inbound_known_rate": 0.2437
     },
     "test": {
-      "date_min": "2026-08-03",
-      "date_max": "2026-08-16",
-      "n_rows": 6252,
-      "n_dates": 14,
-      "delayed15_rate": 0.2909
+      "date_min": "2026-08-11",
+      "date_max": "2026-08-25",
+      "n_rows": 6580,
+      "n_dates": 15,
+      "delayed15_rate": 0.2792,
+      "inbound_known_rate": 0.2473
     }
   },
-  "clf_best_iteration": 258,
-  "reg_best_iteration": 868,
+  "clf_best_iteration": 296,
+  "reg_best_iteration": 866,
   "params": {
     "n_estimators": 2000,
     "learning_rate": 0.03,
@@ -88,75 +96,238 @@
   "metrics": {
     "A_global/val": {
       "auc": 0.5,
-      "logloss": 0.7095,
-      "brier": 0.2557,
-      "mae": 23.114
+      "logloss": 0.6817,
+      "brier": 0.2428,
+      "mae": 22.142
     },
     "B_airline_hour/val": {
-      "auc": 0.6427,
-      "logloss": 0.6849,
-      "brier": 0.2418,
-      "mae": 22.328
+      "auc": 0.6272,
+      "logloss": 0.6619,
+      "brier": 0.2314,
+      "mae": 21.519
     },
     "A_global/test": {
       "auc": 0.5,
-      "logloss": 0.6037,
-      "brier": 0.2066,
-      "mae": 19.06
+      "logloss": 0.5922,
+      "brier": 0.2012,
+      "mae": 18.643
     },
     "B_airline_hour/test": {
-      "auc": 0.6231,
-      "logloss": 0.5849,
-      "brier": 0.1979,
-      "mae": 18.532
+      "auc": 0.628,
+      "logloss": 0.5702,
+      "brier": 0.1923,
+      "mae": 18.135
     },
     "median_train/test": {
-      "mae": 17.351
+      "mae": 16.633
     },
     "XGB/val": {
-      "auc": 0.7365,
-      "logloss": 0.5853,
-      "brier": 0.2008,
-      "mae": 20.631
+      "auc": 0.7189,
+      "logloss": 0.5919,
+      "brier": 0.2016,
+      "mae": 19.655
     },
     "XGB/test": {
-      "auc": 0.6614,
-      "logloss": 0.5754,
-      "brier": 0.1934,
-      "mae": 16.602
+      "auc": 0.6931,
+      "logloss": 0.5455,
+      "brier": 0.1818,
+      "mae": 15.721
     }
   },
   "ablation_test": {
     "full": {
-      "n_features": 33,
-      "auc": 0.6614,
-      "logloss": 0.5754,
-      "brier": 0.1934
+      "n_features": 38,
+      "auc": 0.6931,
+      "logloss": 0.5455,
+      "brier": 0.1818,
+      "mae": 15.721
     },
     "no_weather": {
-      "n_features": 19,
-      "auc": 0.6482,
-      "logloss": 0.5848,
-      "brier": 0.1984
+      "n_features": 24,
+      "auc": 0.6714,
+      "logloss": 0.5653,
+      "brier": 0.191,
+      "mae": null
     },
     "no_rolling": {
-      "n_features": 27,
-      "auc": 0.6639,
-      "logloss": 0.5889,
-      "brier": 0.1965
+      "n_features": 32,
+      "auc": 0.6849,
+      "logloss": 0.5495,
+      "brier": 0.1835,
+      "mae": null
+    },
+    "no_inbound": {
+      "n_features": 33,
+      "auc": 0.6724,
+      "logloss": 0.5545,
+      "brier": 0.1854,
+      "mae": 15.947
     },
     "no_weather_no_rolling": {
-      "n_features": 13,
-      "auc": 0.6565,
-      "logloss": 0.5761,
-      "brier": 0.1948
+      "n_features": 18,
+      "auc": 0.6798,
+      "logloss": 0.5547,
+      "brier": 0.1866,
+      "mae": null
     },
     "calendar+congestion only": {
       "n_features": 9,
-      "auc": 0.595,
-      "logloss": 0.5964,
-      "brier": 0.2036
+      "auc": 0.6099,
+      "logloss": 0.5828,
+      "brier": 0.1978,
+      "mae": null
     }
   },
-  "features_parquet_rows": 39979
+  "features_parquet_rows": 43885,
+  "inbound": {
+    "known_rate": {
+      "train": 0.2469,
+      "val": 0.2437,
+      "test": 0.2473
+    },
+    "known_rate_unmasked": {
+      "train": 0.325,
+      "val": 0.3237,
+      "test": 0.3246
+    },
+    "inbound_dropout": 0.25,
+    "mask_seed": 0,
+    "split_seed_offsets": {
+      "train": 0,
+      "val": 1,
+      "test": 2
+    },
+    "links_event_source": "sched",
+    "features_meta": {
+      "built_at": "2026-08-25T09:31:44+00:00",
+      "rows": 43885,
+      "links_event_source": "sched",
+      "inbound_known_rate": 0.321
+    },
+    "serve_rate": {
+      "probes": [
+        {
+          "probe_utc": "2026-08-24T14:35:58+00:00",
+          "n": 36,
+          "rate": 0.4444,
+          "lt30m": {
+            "n": 9,
+            "rate": 0.5556
+          },
+          "h30m_2h": {
+            "n": 15,
+            "rate": 0.2667
+          },
+          "note": "manual probe #1"
+        },
+        {
+          "probe_utc": "2026-08-25T09:31:07.805645+00:00",
+          "n": 62,
+          "rate": 0.2419,
+          "after_STD": {
+            "n": 20,
+            "rate": 0.15
+          },
+          "lt30m": {
+            "n": 12,
+            "rate": 0.1667
+          },
+          "h30m_2h": {
+            "n": 30,
+            "rate": 0.3333
+          }
+        }
+      ],
+      "r_serve": 0.2419,
+      "r_train": 0.3195,
+      "p_drop": 0.25,
+      "rule": "pooled n=98 < 200 -> thin rule: r_serve = min(probe rates) = 0.2419 (probe #2, afternoon); p_drop = ceil2(1 - r_serve/r_train); probes span 18.9 h"
+    }
+  },
+  "inbound_gate": {
+    "n_test": 6580,
+    "n_test_seeds": 5,
+    "inbound_dropout": 0.25,
+    "per_seed": [
+      {
+        "test_mask_seed": 0,
+        "inbound_known_rate": 0.2389,
+        "auc_full": 0.6907,
+        "auc_no_inbound": 0.67237,
+        "mae_full": 15.7503,
+        "mae_no_inbound": 15.9474,
+        "d_auc": 0.01833,
+        "d_mae": -0.1971
+      },
+      {
+        "test_mask_seed": 1,
+        "inbound_known_rate": 0.2445,
+        "auc_full": 0.69117,
+        "auc_no_inbound": 0.67237,
+        "mae_full": 15.7437,
+        "mae_no_inbound": 15.9474,
+        "d_auc": 0.0188,
+        "d_mae": -0.2037
+      },
+      {
+        "test_mask_seed": 2,
+        "inbound_known_rate": 0.2473,
+        "auc_full": 0.69313,
+        "auc_no_inbound": 0.67237,
+        "mae_full": 15.7214,
+        "mae_no_inbound": 15.9474,
+        "d_auc": 0.02076,
+        "d_mae": -0.226
+      },
+      {
+        "test_mask_seed": 3,
+        "inbound_known_rate": 0.2406,
+        "auc_full": 0.69036,
+        "auc_no_inbound": 0.67237,
+        "mae_full": 15.7553,
+        "mae_no_inbound": 15.9474,
+        "d_auc": 0.01799,
+        "d_mae": -0.1921
+      },
+      {
+        "test_mask_seed": 4,
+        "inbound_known_rate": 0.2415,
+        "auc_full": 0.69023,
+        "auc_no_inbound": 0.67237,
+        "mae_full": 15.7549,
+        "mae_no_inbound": 15.9474,
+        "d_auc": 0.01786,
+        "d_mae": -0.1925
+      }
+    ],
+    "mean": {
+      "auc_full": 0.69112,
+      "auc_no_inbound": 0.67237,
+      "d_auc": 0.01875,
+      "mae_full": 15.74512,
+      "mae_no_inbound": 15.9474,
+      "d_mae": -0.20228
+    },
+    "ci_test_seed_0": {
+      "n_boot": 2000,
+      "d_auc": [
+        0.01284,
+        0.02361
+      ],
+      "d_mae": [
+        -0.24562,
+        -0.14632
+      ]
+    },
+    "sensitivity": {
+      "inbound_dropout": 0.35,
+      "inbound_known_rate_test": 0.216,
+      "auc_full": 0.69081,
+      "mae_full": 15.7548,
+      "auc_no_inbound": 0.67237,
+      "mae_no_inbound": 15.9474,
+      "d_auc": 0.01844,
+      "d_mae": -0.1926
+    }
+  }
 }
