@@ -1,6 +1,6 @@
 """Live evaluation: predictions vs actuals for flights that have since departed -> reports/live-eval.md.
 
-Usage: python -m hkia.evaluate [--days 7] [--out reports/live-eval.md]
+Usage: python -m hkia.evaluate [--days 7] [--out reports/live-eval.md] [--since 2026-08-20T00:00:00Z]
 
 For each departed flight with at least one prediction, take the LAST score before departure (max scored_at with
 scored_at <= actual_ts; predictions are only ever written for flights without an actual, so this is the freshest score
@@ -21,6 +21,10 @@ None rather than a number when a slice has a single class or is empty):
   deltas       model minus airline x hour baseline for every headline metric, with a paired bootstrap 95 % CI --
                without it a +0.017 AUC on four days of data reads as a win when it is inside the noise
   coverage     departed flights in the window vs departed flights that carry a prediction (the cron misses some)
+  by_model_version_metrics  same metrics as `model`, broken out per model_version, flagged `thin` below MIN_SLICE_N --
+               live confirmation that a newer deployment is actually better takes weeks to accrue
+`--since` adds a `scored_at >= <ISO timestamp>` predicate on top of `--days`, to look only at what a given
+deployment actually confirmed rather than scores an older version wrote in the same window.
 """
 import argparse
 import datetime as dt
@@ -51,8 +55,13 @@ LEAD_BUCKETS = [("after STD", -np.inf, 0.0), ("< 30 min", 0.0, 30.0), ("30–120
                 ("2–12 h", 120.0, 720.0), ("> 12 h", 720.0, np.inf)]
 
 
-def matured_predictions(conn, days: int = 7, now: dt.datetime | None = None) -> pd.DataFrame:
-    """One row per departed flight in the window: last prediction before departure + actual delay."""
+def matured_predictions(conn, days: int = 7, now: dt.datetime | None = None, since_scored: str | None = None) -> pd.DataFrame:
+    """One row per departed flight in the window: last prediction before departure + actual delay.
+
+    `since_scored`: an extra `scored_at >= ?` predicate (ISO timestamp), applied to the last-known-score itself --
+    e.g. to look only at what a given model deployment actually confirmed, not scores written by an older version
+    still maturing at the same time. Independent of `days`, which bounds the window by *departure* date.
+    """
     if not conn.execute("SELECT name FROM sqlite_master WHERE name='predictions'").fetchone():
         return pd.DataFrame()
     now = now or dt.datetime.now(dt.timezone.utc)
@@ -70,7 +79,11 @@ def matured_predictions(conn, days: int = 7, now: dt.datetime | None = None) -> 
     FROM last l JOIN flights f ON f.date=l.date AND f.flight_no=l.flight_no AND f.scheduled_ts=l.scheduled_ts
     WHERE l.rn = 1 AND datetime(f.actual_ts) >= datetime(?)
     """
-    df = pd.read_sql_query(q, conn, params=(since,))
+    params: list = [since]
+    if since_scored:
+        q += " AND datetime(l.scored_at) >= datetime(?)"
+        params.append(since_scored)
+    df = pd.read_sql_query(q, conn, params=tuple(params))
     if df.empty:
         return df
     for c in ("scheduled_ts", "actual_ts", "scored_at"):
@@ -299,8 +312,28 @@ def notable_flights(df: pd.DataFrame, k: int = N_NOTABLE) -> dict:
             "high_confidence": high_confidence_record(df)}
 
 
-def compute(conn, days: int = 7, now: dt.datetime | None = None, models_dir: Path = ROOT / "models") -> dict:
-    df = matured_predictions(conn, days, now)
+def by_model_version_metrics(df: pd.DataFrame) -> dict:
+    """Per model_version: n, live classifier/regression metrics, and the span of scored_at that fed them.
+
+    Small groups aren't hidden -- flagged `thin` the way every other slice in this module is -- and AUC is None
+    rather than a number when a version's window happens to hold only one outcome class (`_clf` already guards that).
+    """
+    out = {}
+    for mv, g in df.groupby("model_version"):
+        m = _clf(g["delayed15"], g["p_delay15"])
+        out[str(mv)] = {
+            "n": int(len(g)), "thin": bool(len(g) < MIN_SLICE_N),
+            "auc": m["auc"], "brier": m["brier"], "logloss": m["logloss"],
+            "mae": round(float(mean_absolute_error(g["delay_min"], g["pred_delay_min"])), 3),
+            "first_scored_at": g["scored_at"].min().isoformat(timespec="seconds"),
+            "last_scored_at": g["scored_at"].max().isoformat(timespec="seconds"),
+        }
+    return out
+
+
+def compute(conn, days: int = 7, now: dt.datetime | None = None, models_dir: Path = ROOT / "models",
+            since_scored: str | None = None) -> dict:
+    df = matured_predictions(conn, days, now, since_scored=since_scored)
     n = len(df)
     out = {"window_days": days, "n_matured": int(n), "min_n": MIN_N, "computed_at":
            (now or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")}
@@ -341,6 +374,7 @@ def compute(conn, days: int = 7, now: dt.datetime | None = None, models_dir: Pat
     out["min_slice_n"] = MIN_SLICE_N
     out["cal_min_n"] = CAL_MIN_N
     out["by_model_version"] = df.groupby("model_version").size().to_dict()
+    out["by_model_version_metrics"] = by_model_version_metrics(df)
     return out
 
 
@@ -437,6 +471,20 @@ def render(res: dict) -> str:
                                   f"**all {hc['n']} calls published at P ≥ {hc['threshold']:.0%}**, {hc['n_late']} were actually more "
                                   f"than 15 minutes late ({hc['rate']:.0%})."]
 
+    mvm = res.get("by_model_version_metrics") or {}
+    if mvm:
+        lines += ["", "## By model version", "",
+                  "| model_version | n | AUC | Brier | log loss | MAE (min) | first scored | last scored |",
+                  "|---|---:|---:|---:|---:|---:|---|---|"]
+        for mv, m in mvm.items():
+            flag = " *" if m.get("thin") else ""
+            lines.append(f"| {mv}{flag} | {m['n']} | {_fmt(m['auc'])} | {_fmt(m['brier'])} | {_fmt(m['logloss'])} | "
+                         f"{_fmt(m['mae'], 1)} | {m['first_scored_at']} | {m['last_scored_at']} |")
+        notes = [f"`*` = thin {thin}."] if any(m.get("thin") for m in mvm.values()) else []
+        lines += ["", " ".join(notes + ["Live confirmation that a newer model version is actually better takes "
+                                        "weeks to accrue at this cron cadence — a version with few matured "
+                                        "predictions here is not yet evidence either way."])]
+
     lines += ["", f"Model versions in window: {res['by_model_version']}", ""]
     return "\n".join(lines)
 
@@ -445,9 +493,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--out", default=str(ROOT / "reports" / "live-eval.md"))
+    ap.add_argument("--since", default=None, help="ISO timestamp; only scores written at/after this count as matured")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    res = compute(connect(), a.days)
+    res = compute(connect(), a.days, since_scored=a.since)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(render(res))
     log.info("%s -> %s", res["status"], a.out)

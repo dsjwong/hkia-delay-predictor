@@ -3,7 +3,7 @@ import { Badge } from './ui/badge'
 import { PBar } from './PBar'
 import { Sparkline } from './Sparkline'
 import { airlineName, destLabel } from '@/lib/data'
-import type { Flight, Meta, WhyItem } from '@/lib/types'
+import type { Flight, Inbound, Meta, WhyItem } from '@/lib/types'
 import { dt, hm, num, pct, signed } from '@/lib/time'
 import type { Aircraft } from '@/lib/adsb'
 import { amberHex, SERIES_1, SERIES_2 } from '@/lib/theme'
@@ -56,6 +56,33 @@ export function WhyBlock({ why }: { why?: WhyItem[] }) {
         not the world.
       </p>
     </>
+  )
+}
+
+/** "2 h 08 min" from a minute count; '—' when unknown. */
+function hoursMinutes(min: number | null | undefined): string {
+  if (min == null || Number.isNaN(min)) return '—'
+  const abs = Math.round(Math.abs(min))
+  return `${min < 0 ? '-' : ''}${Math.floor(abs / 60)} h ${String(abs % 60).padStart(2, '0')} min`
+}
+
+function inboundMethodLabel(method: Inbound['method']): string {
+  return method === 'stand_gate' ? 'stand/gate proxy' : 'ADS-B match'
+}
+
+function inboundStatusBadge(ib: Inbound) {
+  if (ib.status === 'landed')
+    return (
+      <Badge variant="ok" dot>
+        on stand {hm(ib.actual_ts)}
+      </Badge>
+    )
+  if (ib.status === 'in_flight')
+    return <Badge dot>in flight · est {hm(ib.est_ts)}</Badge>
+  return (
+    <Badge variant="warn" dot>
+      unknown
+    </Badge>
   )
 }
 
@@ -177,6 +204,25 @@ export function FlightCard({
         <Row k="terminal / gate" v={`${f.terminal ?? '—'} / ${f.gate ?? '—'}`} />
         {f.codeshares && <Row k="codeshares" v={<span className="text-xs break-words">{f.codeshares}</span>} />}
       </section>
+
+      {f.inbound && (
+        <section aria-labelledby="fc-inbound">
+          <h4 id="fc-inbound" className="hk-kicker mb-1">
+            Inbound aircraft
+          </h4>
+          <Row k="inbound flight" v={`${f.inbound.flight_no} from ${destLabel(meta, f.inbound.origin)}`} />
+          <Row k="status" v={inboundStatusBadge(f.inbound)} />
+          <Row k="scheduled arrival" v={hm(f.inbound.sched_ts)} />
+          <Row k="turnaround" v={hoursMinutes(f.inbound.slack_min)} />
+          <Row k="link confidence" v={`${f.inbound.confidence.toFixed(2)} (${inboundMethodLabel(f.inbound.method)})`} />
+          <p className="text-[0.7rem] text-muted leading-relaxed mt-1">
+            {f.inbound.method === 'stand_gate'
+              ? 'Link inferred from a shared stand/gate number (~99% airline agreement).'
+              : 'Link confirmed via an ADS-B transponder match.'}
+            {!f.inbound.used_by_model && " This inbound information wasn't available in time for the score above."}
+          </p>
+        </section>
+      )}
 
       {aircraft && (
         <section aria-labelledby="fc-ac">

@@ -4,7 +4,7 @@ const STEPS = [
   'GitHub Actions cron (ingest.yml, every 30 min, $0) checks out this repo.',
   "hkia.ingest_flights pulls yesterday/today/tomorrow's departures from the Airport Authority flight-info API on data.gov.hk (scheduled vs actual = the label).",
   'hkia.ingest_weather pulls the latest VHHH METAR (aviationweather.gov) and HKO current readings + warnings (typhoon signals) into SQLite data/hkia.db.',
-  'hkia.features builds the same 33 features for training and inference (calendar, airline/destination, congestion, as-of weather, point-in-time rolling delays).',
+  'hkia.features builds the same 38 features for training and inference (calendar, airline/destination, congestion, as-of weather, point-in-time rolling delays, and an inbound-aircraft block active only inside ~2 h of departure).',
   'hkia.train (offline, occasionally) fits baselines + XGBoost on a date-ordered split → models/, reports/M2-results.md.',
   'hkia.predict (every cron run) scores every not-yet-departed flight for today + tomorrow → table predictions (history kept).',
   'hkia.export_json writes compact JSON snapshots (meta, departures, patterns, model, weather; ~600 KB) to web/public/data/.',

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { FlightCard } from './FlightCard'
-import type { Flight } from '@/lib/types'
+import type { Flight, Inbound } from '@/lib/types'
 
 const FLIGHT: Flight = {
   flight_no: 'CX 261',
@@ -69,5 +69,52 @@ describe('FlightCard — why this prediction', () => {
     render(<FlightCard flight={{ ...FLIGHT, p: null, why: undefined }} meta={null} />)
     expect(screen.queryByRole('region', { name: /why this prediction/i })).toBeNull()
     expect(screen.getByText(/Not scored yet/i)).toBeInTheDocument()
+  })
+})
+
+const LANDED_INBOUND: Inbound = {
+  flight_no: 'UO 755',
+  origin: 'CNX',
+  sched_ts: '2026-08-20T02:30:00Z',
+  actual_ts: '2026-08-20T03:00:00Z',
+  est_ts: null,
+  status: 'landed',
+  slack_min: 128,
+  sched_slack_min: 150,
+  confidence: 1.0,
+  method: 'stand_gate',
+  used_by_model: true,
+}
+
+const inboundBlock = () => screen.getByRole('region', { name: /inbound aircraft/i })
+
+describe('FlightCard — inbound aircraft', () => {
+  it('renders the section for a landed inbound, with an on-stand badge and no "not in the score" caveat', () => {
+    render(<FlightCard flight={{ ...FLIGHT, inbound: LANDED_INBOUND }} meta={null} />)
+    const block = inboundBlock()
+    expect(within(block).getByText(/UO 755 from CNX/i)).toBeInTheDocument()
+    expect(within(block).getByText(/on stand/i)).toBeInTheDocument()
+    expect(within(block).getByText(/2 h 08 min/)).toBeInTheDocument()
+    expect(within(block).queryByText(/wasn.t available in time/i)).toBeNull()
+  })
+
+  it('shows the ETA and the "not in the score" clause for an in-flight inbound not used by the model', () => {
+    const inbound: Inbound = {
+      ...LANDED_INBOUND,
+      actual_ts: null,
+      est_ts: '2026-08-20T03:10:00Z',
+      status: 'in_flight',
+      used_by_model: false,
+    }
+    render(<FlightCard flight={{ ...FLIGHT, inbound }} meta={null} />)
+    const block = inboundBlock()
+    expect(within(block).getByText(/in flight/i)).toBeInTheDocument()
+    expect(within(block).getByText(/est/i)).toBeInTheDocument()
+    expect(within(block).getByText(/wasn.t available in time for the score above/i)).toBeInTheDocument()
+  })
+
+  it('is not rendered when the flight carries no inbound object', () => {
+    render(<FlightCard flight={{ ...FLIGHT, inbound: undefined }} meta={null} />)
+    expect(screen.queryByRole('region', { name: /inbound aircraft/i })).toBeNull()
   })
 })

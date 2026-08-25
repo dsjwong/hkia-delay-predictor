@@ -25,6 +25,26 @@ export interface Meta {
 
 export type FlightStatus = 'scheduled' | 'departed' | 'cancelled'
 
+/** The inbound aircraft feeding this departure, written by src/hkia/export_json.py:inbound_by_flight. Only present
+ *  for flights that have not left yet (same size discipline as `why`), and only when `aircraft_links` has a row.
+ *  `flight_no`/`origin`/`sched_ts` describe the INBOUND arrival, not this departure. `used_by_model` is the exact
+ *  predicate the model uses (a stand_gate link whose inbound was on blocks more than 2 h before this departure's
+ *  scheduled time) — false for an adsb_hex link even when it looks just as informative, because the model never
+ *  sees adsb_hex links at all. */
+export interface Inbound {
+  flight_no: string
+  origin: string | null
+  sched_ts: string | null
+  actual_ts: string | null
+  est_ts: string | null
+  status: 'landed' | 'in_flight' | 'unknown'
+  slack_min: number | null
+  sched_slack_min: number | null
+  confidence: number
+  method: 'stand_gate' | 'adsb_hex'
+  used_by_model: boolean
+}
+
 /** One attribution row of the "why this prediction" block, written by src/hkia/explain.py:
  *  `[direction, one-liner, probability points]` — direction +1 when the feature pushed P(delay > 15) up.
  *  The values are local SHAP contributions for that single prediction, converted from log-odds to probability
@@ -51,6 +71,8 @@ export interface Flight {
   why?: WhyItem[]
   /** [epoch_s, p, pred_min] */
   history?: [number, number | null, number | null][]
+  /** the inbound aircraft; only written for flights that have not departed yet, and only with an aircraft_links row */
+  inbound?: Inbound
 }
 
 export interface Departures {

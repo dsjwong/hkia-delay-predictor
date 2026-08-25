@@ -50,8 +50,9 @@ DEFAULT_OUT = ROOT / "web" / "public" / "data"
 LIMITATIONS = [
     "Weather = latest observation, not a forecast. Every future flight is scored with the most recent VHHH METAR "
     "(persistence, capped at 3 h of age). A storm forecast for the evening does not move the morning's numbers.",
-    "Departures only, no arrivals, no ADS-B in the model. The single strongest real-world predictor, the inbound aircraft "
-    "running late, is not a feature yet (the live map shows ADS-B but does not feed the model).",
+    "Inbound aircraft is now a feature, but only within ~2 h of departure: the model uses whether the aircraft operating "
+    "this flight was already on stand by then (via the stand/gate proxy, not the ADS-B links, which remain display-only). "
+    "Outside that window, or while the inbound is still airborne, the card shows a live ETA that is not yet fed into the model.",
     "Rolling 91-day window, one season. The data.gov.hk API keeps ~91 days; the training set (May-Aug 2026) has one typhoon "
     "(Noul, 25-26 Jul) in the validation split, so typhoon effects are learned from a handful of days and unconfirmed on test.",
     "Survivorship / churn. Cancelled flights are excluded from the delay label; the schedule for tomorrow can still change.",
@@ -108,6 +109,59 @@ def _dump(path: Path, obj) -> int:
     return len(txt.encode())
 
 
+# ---------------------------------------------------------------- inbound aircraft
+INBOUND_Q = """
+SELECT l.dep_flight_no AS dep_flight_no, l.dep_scheduled_ts AS dep_scheduled_ts, l.method, l.confidence,
+       l.arr_flight_no AS arr_flight_no, l.arr_actual_ts AS arr_actual_ts, l.arr_estimated_ts AS arr_estimated_ts,
+       a.origin AS arr_origin, a.scheduled_ts AS arr_scheduled_ts
+FROM aircraft_links l
+LEFT JOIN arrivals a ON a.date = l.arr_date AND a.flight_no = l.arr_flight_no AND a.scheduled_time = l.arr_scheduled_time
+WHERE l.date = ? AND l.method IN ('stand_gate', 'adsb_hex')
+"""
+
+
+def inbound_by_flight(c: sqlite3.Connection, date: str, now: dt.datetime) -> dict:
+    """(flight_no, scheduled_ts) of the departure -> inbound-aircraft display payload, or {} without aircraft_links.
+
+    One link per departure: stand_gate preferred (it is the method the model can use as a feature), adsb_hex only
+    as a fallback for display when no stand_gate link exists (it is real information; it just has no history and
+    is never `used_by_model`). `used_by_model` mirrors the exact predicate hkia.features.inbound_features uses --
+    a stand_gate link whose inbound was on blocks more than 2 h before the scheduled departure, *and* whose 2-hour
+    cutoff has actually been reached by `now` -- so a day-ahead export never claims the model saw an inbound that,
+    at serving time, was still in the future (e.g. a 22:00 export scoring a 00:30-tomorrow departure: the cutoff is
+    22:30, still ahead of `now`, so the model scored it `inbound_known=0` no matter how the inbound later turns out).
+    """
+    if not _has(c, "aircraft_links"):
+        return {}
+    df = _q(c, INBOUND_Q, (date,))
+    if df.empty:
+        return {}
+    df["rank"] = (df["method"] != "stand_gate").astype(int)  # stand_gate (0) before adsb_hex (1)
+    df = df.sort_values(["dep_flight_no", "dep_scheduled_ts", "rank"]).drop_duplicates(
+        ["dep_flight_no", "dep_scheduled_ts"], keep="first")
+    dep_sched = pd.to_datetime(df["dep_scheduled_ts"], utc=True, errors="coerce")
+    arr_actual = pd.to_datetime(df["arr_actual_ts"], utc=True, errors="coerce")
+    arr_est = pd.to_datetime(df["arr_estimated_ts"], utc=True, errors="coerce")
+    arr_sched = pd.to_datetime(df["arr_scheduled_ts"], utc=True, errors="coerce")
+    best_known = arr_actual.fillna(arr_est).fillna(arr_sched)
+    slack_min = (dep_sched - best_known).dt.total_seconds() / 60
+    sched_slack_min = (dep_sched - arr_sched).dt.total_seconds() / 60
+    cutoff = dep_sched - pd.Timedelta(hours=2)
+    used_by_model = (df["method"] == "stand_gate").to_numpy() & arr_actual.notna().to_numpy() \
+        & (arr_actual < cutoff).to_numpy() & (cutoff <= pd.Timestamp(now)).to_numpy()
+    out: dict[tuple[str, str], dict] = {}
+    for i, r in enumerate(df.itertuples(index=False)):
+        origin = (r.arr_origin or "").split(",")[0].strip() or None
+        status = "landed" if pd.notna(arr_actual.iloc[i]) else ("in_flight" if pd.notna(arr_est.iloc[i]) else "unknown")
+        out[(r.dep_flight_no, r.dep_scheduled_ts)] = {
+            "flight_no": r.arr_flight_no, "origin": origin,
+            "sched_ts": _iso(r.arr_scheduled_ts), "actual_ts": _iso(r.arr_actual_ts), "est_ts": _iso(r.arr_estimated_ts),
+            "status": status, "slack_min": _r(slack_min.iloc[i], 0), "sched_slack_min": _r(sched_slack_min.iloc[i], 0),
+            "confidence": _r(r.confidence, 2), "method": r.method, "used_by_model": bool(used_by_model[i]),
+        }
+    return out
+
+
 # ---------------------------------------------------------------- departures
 LATEST_PRED = """
 SELECT p.flight_no, p.scheduled_ts, p.p_delay15, p.pred_delay_min, p.scored_at
@@ -117,7 +171,7 @@ WHERE p.date = ? AND p.scored_at = (SELECT MAX(scored_at) FROM predictions q
 """
 
 
-def departures(c: sqlite3.Connection, date: str, with_history: bool) -> dict:
+def departures(c: sqlite3.Connection, date: str, with_history: bool, now: dt.datetime) -> dict:
     fl = _q(c, "SELECT flight_no, scheduled_ts, airline, destination, codeshares, terminal, gate, status_raw, estimated_ts, "
                "actual_ts FROM flights WHERE date=? ORDER BY scheduled_ts, flight_no", (date,))
     out = {"date": date, "n": int(len(fl)), "flights": []}
@@ -125,6 +179,7 @@ def departures(c: sqlite3.Connection, date: str, with_history: bool) -> dict:
         return out
     has_pred = _has(c, "predictions")
     why = explain.load(c, date)   # (flight_no, scheduled_ts) -> top-3 attributions of the latest score
+    inbound = inbound_by_flight(c, date, now)  # (flight_no, scheduled_ts) -> inbound-aircraft display payload
     pr = _q(c, LATEST_PRED, (date,)) if has_pred else pd.DataFrame(columns=["flight_no", "scheduled_ts", "p_delay15", "pred_delay_min", "scored_at"])
     df = fl.merge(pr, on=["flight_no", "scheduled_ts"], how="left")
     hist: dict[tuple[str, str], list] = {}
@@ -158,6 +213,10 @@ def departures(c: sqlite3.Connection, date: str, with_history: bool) -> dict:
         w = why.get((r.flight_no, r.scheduled_ts)) if d["status"] == "scheduled" else None
         if w:
             d["why"] = explain.compact(w)
+        # inbound-aircraft display: only for flights that have not left yet, same size discipline as `why`
+        ib = inbound.get((r.flight_no, r.scheduled_ts)) if d["status"] == "scheduled" else None
+        if ib:
+            d["inbound"] = ib
         hh = hist.get((r.flight_no, r.scheduled_ts))
         if hh:
             d["history"] = hh
@@ -385,7 +444,7 @@ def export(db_path: Path = DB_PATH, out: Path = DEFAULT_OUT, now: dt.datetime | 
     dates = {"yesterday": (today - dt.timedelta(days=1)).isoformat(), "today": today.isoformat(), "tomorrow": (today + dt.timedelta(days=1)).isoformat()}
     sizes: dict[str, int] = {}
     with _conn(db_path) as c:
-        deps = {k: departures(c, d, with_history=(k != "yesterday")) for k, d in dates.items()}
+        deps = {k: departures(c, d, with_history=(k != "yesterday"), now=now) for k, d in dates.items()}
         for k, d in deps.items():
             sizes[f"departures_{k}.json"] = _dump(out / f"departures_{k}.json", d)
         sizes["patterns.json"] = _dump(out / "patterns.json", patterns(c, now))
