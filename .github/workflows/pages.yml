@@ -2,7 +2,8 @@ name: pages
 # Build the static web app (web/, Vite + React) and deploy it to GitHub Pages.
 # Triggers: a human push touching web/** (the bot's data commits are made with GITHUB_TOKEN and therefore do NOT trigger
 # this workflow — intended: the deployed site fetches web/public/data/*.json from raw.githubusercontent.com/main at runtime,
-# so fresh data needs no rebuild; the copy bundled under /data/ is only the offline fallback), or a manual dispatch.
+# so fresh data needs no rebuild; the Pages build deliberately ships NO data/ copy — it would freeze at the last web/ deploy and the
+# app would silently fall back to it), or a manual dispatch.
 on:
   push:
     branches: [main]
@@ -39,8 +40,10 @@ jobs:
           # optional: URL of your own CORS relay for the adsb.lol feed (web/worker/adsb-proxy.js on Cloudflare Workers);
           # Settings -> Secrets and variables -> Actions -> Variables -> ADSB_PROXY_URL. Empty = public-proxy fallback (slow).
           VITE_ADSB_URL: ${{ vars.ADSB_PROXY_URL }}
+      - name: Drop the bundled data snapshots (a stale copy would only ever be served as a silent fallback)
+        run: rm -rf dist/data
       - name: Smoke — built index.html has the app root
-        run: grep -q 'id="root"' dist/index.html && test -f dist/data/meta.json
+        run: grep -q 'id="root"' dist/index.html && test ! -e dist/data
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

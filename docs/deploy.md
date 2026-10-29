@@ -75,12 +75,12 @@ basemap style/tiles and the data JSON are the only runtime requests besides the 
   thing the bots commit; the db itself goes to the `data` release via `python -m hkia.dbsync push`).
 - The deployed page fetches those files from `https://raw.githubusercontent.com/dsjwong/hkia-delay-predictor/main/web/public/data/` (sends
   `access-control-allow-origin: *`, `cache-control: max-age=300`; the app adds a 5-minute cache-bust bucket) and re-polls every 5 minutes while
-  open. If raw.githubusercontent is unreachable it falls back to the copy bundled into the Pages artifact (`/data/`, as of the last build).
+  open. The Pages artifact deliberately ships no `/data/` copy (`pages.yml` deletes it after the build): it would freeze at the last `web/` deploy and be served silently if raw were unreachable, so an outage shows the error state instead of months-old numbers.
 - Pushes made by the bot with `GITHUB_TOKEN` do **not** trigger other workflows (GitHub rule), so the 48 data commits/day never rebuild Pages —
   that is intended. `pages.yml` runs on human pushes touching `web/**` (and `workflow_dispatch`). Rebuilding costs ~1 min of Actions time; the
   repo is public, so Actions minutes are free anyway.
 - Alternative considered: copying the JSON into the Pages artifact from the cron jobs (rebuild 48×/day). Rejected as the chattier option; the
-  raw-CDN read is simpler and the bundled copy still makes the artifact self-contained.
+  raw-CDN read is simpler.
 
 ### CORS and the live aircraft feed
 `api.adsb.lol`, `opendata.adsb.fi`, `api.airplanes.live` and anonymous OpenSky return no `Access-Control-Allow-Origin` (OpenSky echoes only its

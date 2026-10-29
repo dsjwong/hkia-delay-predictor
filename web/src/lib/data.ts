@@ -1,6 +1,7 @@
 /** JSON loaders. The snapshots are committed to web/public/data/ by the GitHub Actions cron every ~30 min.
  *  In production the app reads them from raw.githubusercontent.com/main (CORS *, max-age 300) so the Pages build never has
- *  to be redone for fresh data; the copy bundled under <base>/data/ is the fallback (and the source in dev). */
+ *  to be redone for fresh data. The Pages build ships no data/ copy (pages.yml removes it); LOCAL_BASE is the source in dev/tests
+ *  and a harmless second try in production (404). */
 import { useEffect, useState } from 'react'
 import type { CaseStudy, Departures, Meta, ModelJson, Patterns, Weather } from './types'
 
