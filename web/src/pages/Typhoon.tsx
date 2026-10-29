@@ -10,6 +10,7 @@ import { AlertTriangle, Info } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty } from '@/components/ui/empty'
+import { CancellationPanel } from '@/components/CancellationPanel'
 import { Skeleton, SkeletonCard } from '@/components/ui/skeleton'
 import { Tile } from '@/components/ui/tile'
 import { CancelStrip, DelayWithSignalBands, GustPanel, PredVsObsBySignal } from '@/charts/CaseCharts'
@@ -527,6 +528,8 @@ export default function Typhoon() {
           </div>
         </div>
       )}
+
+      <CancellationPanel />
 
       <p className="text-xs text-muted leading-relaxed">
         {c.clip.note}. Sources: {Object.values(c.sources).join(' · ')}. Generated {dt(c.generated_at)}.

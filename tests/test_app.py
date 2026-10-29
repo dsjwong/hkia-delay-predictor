@@ -259,3 +259,10 @@ def test_provider_chain_all_empty_keeps_last_good(monkeypatch):
     ac, err, at = live_map.fetch_adsb(now=600.0)
     assert len(ac) == 4 and at == 500.0
     assert err.startswith("feed degraded:") and "adsb.lol" in err and "OpenSky" in err and "airplanes.live" in err
+
+
+def test_case_page_shows_the_whole_window_cancellation_panel():
+    at = _run("case")
+    if (ROOT / "web" / "public" / "data" / "cancellations.json").exists():
+        assert any("Cancellations across the whole window" in m.value for m in at.markdown)
+        assert {"Departures cancelled", "Ordinary-day rate"} <= {m.label for m in at.metric}

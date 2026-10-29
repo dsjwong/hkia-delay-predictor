@@ -31,6 +31,39 @@ def _sig(s: int) -> str:
     return f"T{s}" if s else "none"
 
 
+def _cancellations() -> None:
+    """Whole-window cancellation counts — descriptive only (no model: too few, too clustered)."""
+    cx = D.cancellations()
+    if not cx or not cx.get("summary") or not cx.get("by_signal"):
+        return
+    s = cx["summary"]
+    st.markdown("#### Cancellations across the whole window")
+    st.caption(f"{s['date_min']} → {s['date_max']} ({s['n_days']} complete HKT days). Descriptive counts, not a forecast: "
+               "too few and too clustered to train a classifier on.")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Departures cancelled", f"{s['n_cancelled']:,}", f"{s['rate']:.2%} of {s['n_flights']:,}", delta_color="off")
+    o = s["ordinary"]
+    k2.metric("Ordinary-day rate", f"{o['rate']:.2%}", f"{o['n_cancelled']} of {o['n']:,}", delta_color="off")
+    k3.metric("On storm / disruption days", f"{s['share_on_disruption_or_signal3']:.0%}", "of all cancellations", delta_color="off")
+    k4.metric("Top 3 days", f"{s['top3_days_share']:.0%}", f"{s['n_days_with_cancellations']} of {s['n_days']} days had any", delta_color="off")
+    by = pd.DataFrame(cx["by_signal"])
+    by["signal"] = by["label"].where(by["signal"] > 0, "none")
+    by["95 % CI"] = by["ci"].map(lambda c: f"{c[0]:.2%} – {c[1]:.2%}" if c else "—")
+    by["rate"] = by["rate"] * 100
+    st.dataframe(by[["signal", "n", "n_cancelled", "rate", "95 % CI", "n_days"]]
+                 .rename(columns={"n": "departures", "n_cancelled": "cancelled", "rate": "rate (%)", "n_days": "days"}),
+                 hide_index=True, width="stretch", column_config={"rate (%)": st.column_config.NumberColumn(format="%.2f")})
+    st.caption("Signal at the scheduled departure time. No. 3 and above come from very few storms — anecdotes, not a dose-response.")
+    days = pd.DataFrame(cx.get("days") or [])
+    if len(days):
+        days["signal"] = days["signal"].map(lambda v: f"No. {v}" if v else "none")
+        days["rate"] = days["rate"] * 100
+        st.dataframe(days[["date", "n_cancelled", "n", "rate", "signal", "top_airline"]]
+                     .rename(columns={"n_cancelled": "cancelled", "n": "of", "rate": "rate (%)", "top_airline": "most affected"}),
+                     hide_index=True, width="stretch", column_config={"rate (%)": st.column_config.NumberColumn(format="%.1f")})
+        st.caption("A day with signal 'none' near the top is a cancellation spike this dataset cannot attribute to a typhoon.")
+
+
 def render() -> None:
     c = D.case_study()
     if not c:
@@ -185,6 +218,8 @@ def render() -> None:
                    f"({msn['date_min']} → {msn['date_max']})" if msn else "")
                 + ". None went past a No. 1 standby signal, so none of them shut the airport — Noul is the only episode "
                   "in this dataset with a signal 8 or above.")
+
+    _cancellations()
 
     st.caption(f"{c['clip']['note']}. Sources: {' · '.join(c['sources'].values())}. "
                f"Generated {_hm(c['generated_at'], '%d %b %Y %H:%M')} HKT by `{c['regenerate']}` — a one-off artefact, "

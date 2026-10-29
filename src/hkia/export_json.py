@@ -14,6 +14,9 @@ Written files (all < 1 MB together; gzip is handled by GitHub Pages):
                              TC-signal flags, typhoon-day stats, by-hour share for the top-4 airlines
   model.json                 M2 metrics, calibration bins, feature importance, ablation, live evaluation, interpretation,
                              limitations
+  cancellations.json         descriptive only: cancelled-departure counts and rates by HKO tropical-cyclone signal, by scheduled
+                             hour and airline on ordinary days, and the disruption days that hold most of the cancellations
+                             (the db has too few, too clustered cancellations to train a classifier on)
   weather.json               latest METAR (parsed + raw), HKO warnings, active TC signal
 
 Run by the ingest cron after `hkia.predict` (and by the daily backfill after `hkia.evaluate`); the JSON is committed with the db.
@@ -25,6 +28,7 @@ import argparse
 import datetime as dt
 import json
 import logging
+import math
 import re
 import sqlite3
 import sys
@@ -38,6 +42,7 @@ from .airlines import AIRLINE_NAMES, IATA_TO_ICAO, airline_name
 from .airports import airport, known
 from .db import DB_PATH, ROOT
 from .evaluate import MIN_N, compute as live_eval_compute
+from .features import load_tc_signals, tc_features
 
 log = logging.getLogger("hkia.export_json")
 HKT = dt.timezone(dt.timedelta(hours=8))
@@ -312,6 +317,75 @@ def patterns(c: sqlite3.Connection, now: dt.datetime) -> dict:
     }
 
 
+# ---------------------------------------------------------------- cancellations
+DISRUPTION_RATE = 0.05          # a day on which >= 5 % of the schedule was cancelled is a disruption day, not ordinary background
+MIN_CELL_AIRLINE = 500          # airline rows need this many ordinary-day departures
+SIGNAL_LABELS = {0: "none", 1: "No. 1", 3: "No. 3", 8: "No. 8", 9: "No. 9", 10: "No. 10"}
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> list[float] | None:
+    """95 % Wilson interval of a proportion — honest about a handful of cancellations in a cell."""
+    if n <= 0:
+        return None
+    p = k / n
+    d = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / d
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return [_r(max(0.0, centre - half), 4), _r(min(1.0, centre + half), 4)]
+
+
+def _cell(k: int, n: int) -> dict:
+    return {"n": int(n), "n_cancelled": int(k), "rate": _r(k / n, 4) if n else None, "ci": wilson(int(k), int(n))}
+
+
+def cancellations(c: sqlite3.Connection, now: dt.datetime) -> dict:
+    """Cancelled departures, described not predicted. Complete HKT days only (before today); status_raw == 'cancelled'."""
+    today = now.astimezone(HKT).date().isoformat()
+    df = _q(c, "SELECT date, airline, scheduled_ts, status_raw FROM flights WHERE date < ?", (today,))
+    if df.empty:
+        return {"summary": None}
+    sched = pd.to_datetime(df["scheduled_ts"], utc=True)
+    df["cancelled"] = df["status_raw"].fillna("").str.strip().str.lower().eq("cancelled")
+    df["hour"] = sched.dt.tz_convert(HKT_TZ).dt.hour
+    tc = load_tc_signals(c) if _has(c, "tc_signals") else pd.DataFrame(columns=["signal", "start_ts", "end_ts"])
+    df["signal"] = tc_features(sched, tc)["tc_signal"].to_numpy()
+    day = df.groupby("date").agg(n=("cancelled", "size"), k=("cancelled", "sum"), signal=("signal", "max")).reset_index()
+    day["rate"] = day["k"] / day["n"]
+    disrupted = set(day.loc[day["rate"] >= DISRUPTION_RATE, "date"])
+    df["ordinary"] = ~df["date"].isin(disrupted) & (df["signal"] < 3)
+    ordn = df[df["ordinary"]]
+    k_all, n_all = int(df["cancelled"].sum()), len(df)
+    k_dis = int(df.loc[~df["ordinary"], "cancelled"].sum())
+    by_signal = [{"signal": sg, "label": SIGNAL_LABELS.get(sg, f"No. {sg}"),
+                  "n_days": int(g["date"].nunique()), **_cell(int(g["cancelled"].sum()), len(g))}
+                 for sg, g in df.groupby("signal")]
+    h = ordn.groupby("hour")["cancelled"].agg(["sum", "size"]).reindex(range(24)).fillna(0)
+    by_hour = [{"hour": int(i), **_cell(int(r["sum"]), int(r["size"]))} for i, r in h.iterrows()]
+    a = ordn.groupby("airline")["cancelled"].agg(["sum", "size"])
+    a = a[a["size"] >= MIN_CELL_AIRLINE].sort_values("size", ascending=False)
+    by_airline = [{"code": code, "name": airline_name(code), **_cell(int(r["sum"]), int(r["size"]))} for code, r in a.iterrows()]
+    top = day[day["k"] > 0].sort_values("k", ascending=False).head(10)
+    days = []
+    for r in top.itertuples(index=False):
+        g = df[(df["date"] == r.date) & df["cancelled"]]
+        lead = g["airline"].value_counts()
+        days.append({"date": r.date, "n": int(r.n), "n_cancelled": int(r.k), "rate": _r(r.rate, 4), "signal": int(r.signal),
+                     "top_airline": airline_name(lead.index[0]) if len(lead) else None,
+                     "top_airline_share": _r(lead.iloc[0] / len(g), 3) if len(lead) else None})
+    ten = day.sort_values("k", ascending=False).head(3)["k"].sum()
+    return {
+        "summary": {"date_min": df["date"].min(), "date_max": df["date"].max(), "n_days": int(len(day)),
+                    "n_flights": n_all, "n_cancelled": k_all, "rate": _r(k_all / n_all, 4),
+                    "n_days_with_cancellations": int((day["k"] > 0).sum()),
+                    "top3_days_share": _r(ten / k_all, 3) if k_all else None,
+                    "disruption_days": sorted(disrupted), "disruption_rate": DISRUPTION_RATE,
+                    "share_on_disruption_or_signal3": _r(k_dis / k_all, 3) if k_all else None,
+                    "ordinary": _cell(int(ordn["cancelled"].sum()), len(ordn))},
+        "by_signal": by_signal, "by_hour": by_hour, "by_airline": by_airline, "days": days,
+        "min_cell_airline": MIN_CELL_AIRLINE,
+    }
+
+
 # ---------------------------------------------------------------- model
 def calibration_from_report(p: Path) -> list[dict]:
     if not p.exists():
@@ -448,6 +522,7 @@ def export(db_path: Path = DB_PATH, out: Path = DEFAULT_OUT, now: dt.datetime | 
         for k, d in deps.items():
             sizes[f"departures_{k}.json"] = _dump(out / f"departures_{k}.json", d)
         sizes["patterns.json"] = _dump(out / "patterns.json", patterns(c, now))
+        sizes["cancellations.json"] = _dump(out / "cancellations.json", cancellations(c, now))
         sizes["model.json"] = _dump(out / "model.json", model(c, now, models_dir, reports_dir))
         sizes["weather.json"] = _dump(out / "weather.json", weather(c, now))
         counts = {f"{k}_flights": v["n"] for k, v in deps.items()}

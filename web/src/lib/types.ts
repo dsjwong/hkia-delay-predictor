@@ -426,3 +426,47 @@ export interface CaseStudy {
   clip: { min: number; max: number; note: string }
   sources: Record<string, string>
 }
+
+/* ------------------------------------------------------------------ cancellations.json (hkia.export_json.cancellations)
+ * Descriptive only: counts and rates of cancelled departures, refreshed by the cron with the other snapshots. */
+export interface CancelCell {
+  n: number
+  n_cancelled: number
+  rate: number | null
+  ci: [number, number] | null
+}
+export interface CancelBySignal extends CancelCell {
+  signal: number
+  label: string
+  n_days: number
+}
+export interface CancelDay {
+  date: string
+  n: number
+  n_cancelled: number
+  rate: number
+  signal: number
+  top_airline: string | null
+  top_airline_share: number | null
+}
+export interface Cancellations {
+  summary: {
+    date_min: string
+    date_max: string
+    n_days: number
+    n_flights: number
+    n_cancelled: number
+    rate: number
+    n_days_with_cancellations: number
+    top3_days_share: number | null
+    disruption_days: string[]
+    disruption_rate: number
+    share_on_disruption_or_signal3: number | null
+    ordinary: CancelCell
+  } | null
+  by_signal?: CancelBySignal[]
+  by_hour?: (CancelCell & { hour: number })[]
+  by_airline?: (CancelCell & { code: string; name: string })[]
+  days?: CancelDay[]
+  min_cell_airline?: number
+}

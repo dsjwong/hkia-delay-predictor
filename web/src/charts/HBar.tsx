@@ -16,12 +16,14 @@ export function HBar({
   height,
   xDomain,
   unit,
+  color = SERIES_1,
 }: {
   rows: HBarRow[]
   fmt: (v: number) => string
   height?: number
   xDomain?: [number, number]
   unit?: string
+  color?: string
 }) {
   const h = height ?? Math.max(140, 26 * rows.length + 36)
   return (
@@ -60,7 +62,7 @@ export function HBar({
             )
           }}
         />
-        <Bar dataKey="value" fill={SERIES_1} radius={[0, 3, 3, 0]} isAnimationActive={false}>
+        <Bar dataKey="value" fill={color} radius={[0, 3, 3, 0]} isAnimationActive={false}>
           <LabelList
             dataKey="n"
             position="right"

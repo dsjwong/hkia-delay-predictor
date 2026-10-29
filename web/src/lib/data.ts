@@ -3,7 +3,7 @@
  *  to be redone for fresh data. The Pages build ships no data/ copy (pages.yml removes it); LOCAL_BASE is the source in dev/tests
  *  and a harmless second try in production (404). */
 import { useEffect, useState } from 'react'
-import type { CaseStudy, Departures, Meta, ModelJson, Patterns, Weather } from './types'
+import type { Cancellations, CaseStudy, Departures, Meta, ModelJson, Patterns, Weather } from './types'
 
 const RAW_BASE = 'https://raw.githubusercontent.com/dsjwong/hkia-delay-predictor/main/web/public/data/'
 const LOCAL_BASE = `${import.meta.env.BASE_URL}data/`
@@ -94,6 +94,7 @@ export const usePatterns = () => useJson<Patterns>('patterns.json', 0)
 export const useModel = () => useJson<ModelJson>('model.json', 0)
 /** Static history (five fixed days of July 2026) — never re-fetched while mounted. */
 export const useCaseStudy = () => useJson<CaseStudy>('case_noul.json', 0)
+export const useCancellations = () => useJson<Cancellations>('cancellations.json', 0)
 export const useDepartures = (which: 'yesterday' | 'today' | 'tomorrow') =>
   useJson<Departures>(`departures_${which}.json`)
 

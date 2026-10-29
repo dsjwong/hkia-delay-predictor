@@ -15,7 +15,7 @@ def test_export_writes_all_files(fixture_db, tmp_path):
     out = tmp_path / "data"
     sizes = E.export(fixture_db, out, now=NOW)
     assert set(sizes) == {"meta.json", "departures_yesterday.json", "departures_today.json", "departures_tomorrow.json",
-                          "patterns.json", "model.json", "weather.json"}
+                          "patterns.json", "cancellations.json", "model.json", "weather.json"}
     assert sum(sizes.values()) < 1_000_000
     meta = json.loads((out / "meta.json").read_text())
     assert meta["dates"]["today"] == DAY and meta["counts"]["today_flights"] == 150 and meta["counts"]["predictions"] == 300

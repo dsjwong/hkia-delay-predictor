@@ -215,6 +215,15 @@ def case_study() -> dict | None:
     return json.loads(CASE_JSON.read_text()) if CASE_JSON.exists() else None
 
 
+CANCEL_JSON = ROOT / "web" / "public" / "data" / "cancellations.json"
+
+
+@st.cache_data(ttl=TTL)
+def cancellations() -> dict | None:
+    """Cancelled-departure counts/rates written by `hkia.export_json` (same file the React app fetches)."""
+    return json.loads(CANCEL_JSON.read_text()) if CANCEL_JSON.exists() else None
+
+
 # ---------------------------------------------------------------- model artefacts
 @st.cache_data(ttl=TTL)
 def manifest() -> dict | None:
