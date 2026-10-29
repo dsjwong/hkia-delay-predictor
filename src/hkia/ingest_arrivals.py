@@ -149,7 +149,7 @@ INSERT OR IGNORE INTO arrivals_state_hist (arr_date, flight_no, scheduled_time, 
 VALUES (:arr_date, :flight_no, :scheduled_time, :observed_at, :estimated_ts, :landed_ts, :actual_ts)
 """
 
-HIST_KEEP_DAYS = 30
+HIST_KEEP_DAYS = 90   # phase 3 trains on this history; 30 days was too short to accumulate a sample
 
 
 def _is_live_date(d: dt.date, today: dt.date | None = None) -> bool:

@@ -484,7 +484,7 @@ def test_ingest_dates_skips_history_for_dates_outside_the_live_window(conn, monk
 
 def test_arrivals_state_hist_prune_keeps_the_retention_window(conn):
     now = dt.datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
-    for days_ago in (0, 1, 29, 30, 31, 60):
+    for days_ago in (0, 1, 89, 90, 91, 120):
         ts = (now - dt.timedelta(days=days_ago)).isoformat(timespec="seconds")
         conn.execute("INSERT INTO arrivals_state_hist (arr_date, flight_no, scheduled_time, observed_at) "
                      "VALUES (?,?,?,?)", ("2026-08-19", "CX 100", "09:00", ts))
@@ -492,5 +492,5 @@ def test_arrivals_state_hist_prune_keeps_the_retention_window(conn):
     deleted = ingest_arrivals.prune_hist(conn, now)
     conn.commit()
     kept = conn.execute("SELECT COUNT(*) FROM arrivals_state_hist").fetchone()[0]
-    assert deleted == 2 and kept == 4                       # 31 and 60 days old go; exactly 30 days stays
+    assert deleted == 2 and kept == 4                       # 91 and 120 days old go; exactly 90 days stays
     assert ingest_arrivals.prune_hist(conn, now) == 0        # idempotent
