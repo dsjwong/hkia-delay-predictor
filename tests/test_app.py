@@ -52,6 +52,22 @@ def _offline_adsb(monkeypatch):
     live_map._LAST_POLL.clear()
 
 
+@pytest.fixture(autouse=True)
+def _pin_today_to_the_db(monkeypatch):
+    """The Today page reads "today" off the wall clock; a db copy older than a day (or a run right after HKT midnight) has no rows
+    for it and the page legitimately shows its empty state. Pin "today" to the newest day on file so the tests don't depend on db freshness."""
+    import datetime as dt
+    import sqlite3
+
+    import data as D
+    with sqlite3.connect(f"file:{ROOT / 'data' / 'hkia.db'}?mode=ro", uri=True) as c:
+        latest = c.execute("SELECT MAX(date) FROM flights WHERE date <= ?", (D.now_hkt().date().isoformat(),)).fetchone()[0]
+    if latest:
+        real = D.now_hkt()
+        pinned = dt.datetime.combine(dt.date.fromisoformat(latest), real.timetz())
+        monkeypatch.setattr(D, "now_hkt", lambda: pinned)
+
+
 def _run(page: str | None = None) -> AppTest:
     at = AppTest.from_file(str(APP), default_timeout=120).run()
     if page:
