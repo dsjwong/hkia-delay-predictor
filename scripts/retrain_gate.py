@@ -12,10 +12,11 @@ over flights (both models on the same resample), on the difference candidate - c
     R1  ΔAUC     95 % CI lower bound  > -0.01     (ranking not meaningfully worse)
     R2  ΔMAE     95 % CI upper bound  < +0.30 min (delay minutes not meaningfully worse)
     R3  Δlogloss 95 % CI upper bound  < +0.01     (probabilities, i.e. calibration + sharpness, not meaningfully worse)
-    R5  day-ahead sanity: on test rows with NO inbound link known (what every flight scored >2 h ahead looks like) the
-        candidate's mean probability is within MAX_UNKNOWN_BIAS of the observed late rate -- the failure the one-off
-        inbound GATE-C was written for (reading "no inbound yet" as "trouble"), checked against the label instead of
-        against the shipped model, because a retrained model may legitimately move the level
+    R5  no-inbound sanity: on test rows with NO inbound link known the candidate's mean probability is within
+        MAX_UNKNOWN_BIAS of the observed late rate -- the "no inbound yet reads as trouble" failure the one-off inbound
+        GATE-C was written for, checked against the label instead of against the shipped model, because a retrained
+        model may legitimately move the level. NOT a day-ahead check: those test rows still carry same-day rolling
+        stats and as-of weather, which true day-ahead rows (scored the evening before) do not
     R4  the test window has >= MIN_TEST rows and the candidate MANIFEST records a leak-free build with the same inbound
         dropout the shipped model was trained under (links rebuilt from scheduled times; no silent change of the recipe)
 

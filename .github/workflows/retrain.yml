@@ -30,12 +30,14 @@ jobs:
         run: PYTHONPATH=src python -m hkia.features --out "$RUNNER_TEMP/features.parquet"
       - name: Train a candidate (same inbound recipe as the shipped models; split -> calibration fold -> calibrator)
         run: |
-          python - <<'PY'
+          read -r DROPOUT MASK_SEED < <(python - <<'PY'
           import json, os
           inb = json.load(open("models/MANIFEST.json"))["inbound"]
           json.dump(inb["serve_rate"], open(os.environ["RUNNER_TEMP"] + "/serve_rate.json", "w"))
-          open(os.environ["GITHUB_ENV"], "a").write(f"DROPOUT={inb['inbound_dropout']}\nMASK_SEED={inb['mask_seed']}\n")
+          print(inb["inbound_dropout"], inb["mask_seed"])
           PY
+          )
+          echo "inbound recipe of the shipped models: dropout $DROPOUT, mask seed $MASK_SEED"
           mkdir -p reports.cand && cp reports/M2-results.md reports.cand/     # train.py keeps the hand-written interpretation
           PYTHONPATH=src python -m hkia.train --features "$RUNNER_TEMP/features.parquet" --models models.cand \
             --reports reports.cand --inbound-dropout "$DROPOUT" --mask-seed "$MASK_SEED" \
