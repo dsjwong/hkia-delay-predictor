@@ -189,7 +189,7 @@ def render() -> None:
     ev = D.live_eval(7)
     _report_card(ev)
 
-    x = man["metrics"]["XGB/test"]; b = man["metrics"]["B_airline_hour/test"]; med = man["metrics"]["median_train/test"]
+    x = man["metrics"].get("XGB_calibrated/test") or man["metrics"]["XGB/test"]; b = man["metrics"]["B_airline_hour/test"]; med = man["metrics"]["median_train/test"]
     st.markdown("#### Held-out test — XGBoost vs airline × hour baseline")
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("AUC", f"{x['auc']:.3f}", f"{x['auc'] - b['auc']:+.3f} vs baseline {b['auc']:.3f}")
@@ -200,6 +200,9 @@ def render() -> None:
                f"airline × hour lookup {b['auc']:.0%}); Brier / log loss reward calibration; MAE is the typical error in minutes. Modest, honest gains.")
     rows = {"A: global rate / mean": "A_global/test", "B: airline × hour mean (train only)": "B_airline_hour/test",
             "train median delay": "median_train/test", "XGBoost": "XGB/test"}
+    if "XGB_calibrated/test" in man["metrics"]:
+        rows = {**{k: v for k, v in rows.items() if k != "XGBoost"}, "XGBoost, raw": "XGB/test",
+                "XGBoost, calibrated (served)": "XGB_calibrated/test"}
     met = pd.DataFrame([{"predictor": k, **man["metrics"].get(v, {})} for k, v in rows.items()])
     met = met.rename(columns={"auc": "AUC ↑", "logloss": "log loss ↓", "brier": "Brier ↓", "mae": "MAE min ↓"})
     with st.expander("Full metric table — all baselines"):

@@ -1,0 +1,76 @@
+{
+  "n": 10785,
+  "n_boot": 2000,
+  "candidate": {
+    "auc": 0.7088000706843042,
+    "mae": 11.669719659793396,
+    "logloss": 0.3931647895661693
+  },
+  "current": {
+    "auc": 0.692939555168546,
+    "mae": 12.100125944755296,
+    "logloss": 0.4022907392512012
+  },
+  "d_auc": {
+    "ci": [
+      0.00955690572697115,
+      0.022227067354951065
+    ],
+    "point": 0.015860515515758178
+  },
+  "d_mae": {
+    "ci": [
+      -0.4890875720955744,
+      -0.3702198825202478
+    ],
+    "point": -0.4304062849619008
+  },
+  "d_logloss": {
+    "ci": [
+      -0.011695598980156728,
+      -0.006431415353125273
+    ],
+    "point": -0.009125949685031887
+  },
+  "inbound_unknown": {
+    "n": 7880,
+    "observed_rate": 0.17626903553299492,
+    "candidate_mean_p": 0.17370495817813741,
+    "current_mean_p": 0.19579488777420792
+  },
+  "test_window": [
+    "2026-10-05",
+    "2026-10-29"
+  ],
+  "current_model": "4a4212f@2026-08-25T09:35:34+00:00",
+  "candidate_model": "42715b6@2026-10-29T14:57:07+00:00",
+  "current_calibrator": "none",
+  "ship": true,
+  "checks": [
+    {
+      "gate": "R1",
+      "ok": true,
+      "detail": "\u0394AUC +0.0159, 95 % CI lower bound +0.0096 (need > -0.01)"
+    },
+    {
+      "gate": "R2",
+      "ok": true,
+      "detail": "\u0394MAE -0.430 min, 95 % CI upper bound -0.370 (need < 0.3)"
+    },
+    {
+      "gate": "R3",
+      "ok": true,
+      "detail": "\u0394log loss -0.0091, 95 % CI upper bound -0.0064 (need < 0.01)"
+    },
+    {
+      "gate": "R5",
+      "ok": true,
+      "detail": "no-inbound rows (n=7880): mean P 0.174 vs observed 0.176, bias -0.003 (need |bias| < 0.03); shipped model 0.196"
+    },
+    {
+      "gate": "R4",
+      "ok": true,
+      "detail": "10785 test rows, links 'sched', dropout 0.25, same features"
+    }
+  ]
+}

@@ -68,6 +68,16 @@ def test_mask_inbound_never_invents_a_link():
 
 
 def test_split_seeds_are_distinct_and_the_ablation_knows_the_inbound_block():
-    assert sorted(T.SPLIT_SEED) == ["test", "train", "val"] and len(set(T.SPLIT_SEED.values())) == 3
+    assert sorted(T.SPLIT_SEED) == ["cal", "test", "train", "val"] and len(set(T.SPLIT_SEED.values())) == 4
     assert [f for f in FEATURES if f not in INBOUND] == FEATURES[:-5]
     assert T.PAIRED == ("full", "no_inbound")
+
+
+def test_carve_calibration_is_date_ordered_and_partitions_the_validation_block():
+    dates = [f"2026-07-{d:02d}" for d in range(1, 11)]
+    val = pd.DataFrame({"date": np.repeat(dates, 3), "x": range(30)})
+    parts = T.carve_calibration({"train": val.iloc[:0], "val": val, "test": val.iloc[:0]})
+    assert set(parts) == {"train", "val", "cal", "test"}
+    assert parts["val"]["date"].max() < parts["cal"]["date"].min()
+    assert len(parts["val"]) + len(parts["cal"]) == len(val)
+    assert parts["val"]["date"].nunique() == 5 and parts["cal"]["date"].nunique() == 5

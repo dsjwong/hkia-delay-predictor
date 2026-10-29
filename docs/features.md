@@ -14,6 +14,8 @@ in-progress status (not yet departed) are dropped. Times in the parquet are UTC;
 | `delay_min` | **regression label** = actual − scheduled in minutes; rows < −60 or > 600 are dropped and counted (44 in the first build: 1 low, 43 high) |
 | `delayed15` | **classification label** = `delay_min > 15` |
 
+> Serving: `hkia.predict` returns the classifier's probability after the calibrator saved beside it (`models/calibrator_delayed15.json`, see `src/hkia/calibrate.py`); the "why this prediction" SHAP attributions are computed on the raw booster, so their pp values are a local linearisation around the *served* P and are approximate.
+
 ## Model features (38) — `hkia.features.FEATURES`
 Categorical (XGBoost native categoricals; categories fixed from the train split, unseen → missing):
 | column | meaning |

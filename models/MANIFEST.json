@@ -1,6 +1,6 @@
 {
-  "created_at": "2026-08-25T09:35:34+00:00",
-  "git_sha": "4a4212f",
+  "created_at": "2026-10-29T14:57:07+00:00",
+  "git_sha": "42715b6",
   "xgboost": "3.4.1",
   "features": [
     "airline",
@@ -52,31 +52,39 @@
   "split": {
     "train": {
       "date_min": "2026-05-16",
-      "date_max": "2026-07-25",
-      "n_rows": 29803,
-      "n_dates": 71,
-      "delayed15_rate": 0.2771,
-      "inbound_known_rate": 0.2469
+      "date_max": "2026-09-09",
+      "n_rows": 49770,
+      "n_dates": 117,
+      "delayed15_rate": 0.2804,
+      "inbound_known_rate": 0.2484
     },
     "val": {
-      "date_min": "2026-07-26",
-      "date_max": "2026-08-10",
-      "n_rows": 6991,
-      "n_dates": 16,
-      "delayed15_rate": 0.3725,
-      "inbound_known_rate": 0.2437
+      "date_min": "2026-09-10",
+      "date_max": "2026-09-21",
+      "n_rows": 4885,
+      "n_dates": 12,
+      "delayed15_rate": 0.139,
+      "inbound_known_rate": 0.2938
     },
     "test": {
-      "date_min": "2026-08-11",
-      "date_max": "2026-08-25",
-      "n_rows": 6580,
-      "n_dates": 15,
-      "delayed15_rate": 0.2792,
-      "inbound_known_rate": 0.2473
+      "date_min": "2026-10-05",
+      "date_max": "2026-10-29",
+      "n_rows": 10785,
+      "n_dates": 25,
+      "delayed15_rate": 0.1543,
+      "inbound_known_rate": 0.2694
+    },
+    "cal": {
+      "date_min": "2026-09-22",
+      "date_max": "2026-10-04",
+      "n_rows": 5705,
+      "n_dates": 13,
+      "delayed15_rate": 0.1926,
+      "inbound_known_rate": 0.2659
     }
   },
-  "clf_best_iteration": 296,
-  "reg_best_iteration": 866,
+  "clf_best_iteration": 452,
+  "reg_best_iteration": 466,
   "params": {
     "n_estimators": 2000,
     "learning_rate": 0.03,
@@ -96,113 +104,122 @@
   "metrics": {
     "A_global/val": {
       "auc": 0.5,
-      "logloss": 0.6817,
-      "brier": 0.2428,
-      "mae": 22.142
+      "logloss": 0.4601,
+      "brier": 0.1397,
+      "mae": 16.882
     },
     "B_airline_hour/val": {
-      "auc": 0.6272,
-      "logloss": 0.6619,
-      "brier": 0.2314,
-      "mae": 21.519
+      "auc": 0.658,
+      "logloss": 0.4469,
+      "brier": 0.1368,
+      "mae": 16.489
     },
     "A_global/test": {
       "auc": 0.5,
-      "logloss": 0.5922,
-      "brier": 0.2012,
-      "mae": 18.643
+      "logloss": 0.4745,
+      "brier": 0.1464,
+      "mae": 17.714
     },
     "B_airline_hour/test": {
-      "auc": 0.628,
-      "logloss": 0.5702,
-      "brier": 0.1923,
-      "mae": 18.135
+      "auc": 0.6592,
+      "logloss": 0.458,
+      "brier": 0.1416,
+      "mae": 17.192
     },
     "median_train/test": {
-      "mae": 16.633
+      "mae": 12.731
     },
     "XGB/val": {
-      "auc": 0.7189,
-      "logloss": 0.5919,
-      "brier": 0.2016,
-      "mae": 19.655
+      "auc": 0.7045,
+      "logloss": 0.3752,
+      "brier": 0.1134,
+      "mae": 10.539
     },
     "XGB/test": {
-      "auc": 0.6931,
-      "logloss": 0.5455,
-      "brier": 0.1818,
-      "mae": 15.721
+      "auc": 0.7088,
+      "logloss": 0.3948,
+      "brier": 0.1212,
+      "mae": 11.67
+    },
+    "XGB_calibrated/test": {
+      "auc": 0.7088,
+      "logloss": 0.3932,
+      "brier": 0.1205,
+      "mae": 11.67
     }
   },
   "ablation_test": {
     "full": {
       "n_features": 38,
-      "auc": 0.6931,
-      "logloss": 0.5455,
-      "brier": 0.1818,
-      "mae": 15.721
+      "auc": 0.7088,
+      "logloss": 0.3948,
+      "brier": 0.1212,
+      "mae": 11.67
     },
     "no_weather": {
       "n_features": 24,
-      "auc": 0.6714,
-      "logloss": 0.5653,
-      "brier": 0.191,
+      "auc": 0.6979,
+      "logloss": 0.411,
+      "brier": 0.1276,
       "mae": null
     },
     "no_rolling": {
       "n_features": 32,
-      "auc": 0.6849,
-      "logloss": 0.5495,
-      "brier": 0.1835,
+      "auc": 0.699,
+      "logloss": 0.3987,
+      "brier": 0.1222,
       "mae": null
     },
     "no_inbound": {
       "n_features": 33,
-      "auc": 0.6724,
-      "logloss": 0.5545,
-      "brier": 0.1854,
-      "mae": 15.947
+      "auc": 0.6943,
+      "logloss": 0.3997,
+      "brier": 0.1225,
+      "mae": 11.743
     },
     "no_weather_no_rolling": {
       "n_features": 18,
-      "auc": 0.6798,
-      "logloss": 0.5547,
-      "brier": 0.1866,
+      "auc": 0.6962,
+      "logloss": 0.4492,
+      "brier": 0.1412,
       "mae": null
     },
     "calendar+congestion only": {
       "n_features": 9,
-      "auc": 0.6099,
-      "logloss": 0.5828,
-      "brier": 0.1978,
+      "auc": 0.59,
+      "logloss": 0.4825,
+      "brier": 0.1534,
       "mae": null
     }
   },
-  "features_parquet_rows": 43885,
+  "features_parquet_rows": 71810,
   "inbound": {
     "known_rate": {
-      "train": 0.2469,
-      "val": 0.2437,
-      "test": 0.2473
+      "train": 0.2484,
+      "val": 0.2938,
+      "test": 0.2694,
+      "cal": 0.2659
     },
     "known_rate_unmasked": {
-      "train": 0.325,
-      "val": 0.3237,
-      "test": 0.3246
+      "train": 0.3298,
+      "val": 0.3844,
+      "test": 0.3595,
+      "cal": 0.3557
     },
     "inbound_dropout": 0.25,
     "mask_seed": 0,
     "split_seed_offsets": {
       "train": 0,
       "val": 1,
-      "test": 2
+      "test": 2,
+      "cal": 3
     },
     "links_event_source": "sched",
     "features_meta": {
-      "built_at": "2026-08-25T09:31:44+00:00",
-      "rows": 43885,
+      "built_at": "2026-10-29T14:56:20+00:00",
+      "rows": 71810,
       "links_event_source": "sched",
-      "inbound_known_rate": 0.321
+      "inbound_known_rate": 0.337
     },
     "serve_rate": {
       "probes": [
@@ -245,89 +262,247 @@
     }
   },
   "inbound_gate": {
-    "n_test": 6580,
+    "n_test": 10785,
     "n_test_seeds": 5,
     "inbound_dropout": 0.25,
     "per_seed": [
       {
         "test_mask_seed": 0,
-        "inbound_known_rate": 0.2389,
-        "auc_full": 0.6907,
-        "auc_no_inbound": 0.67237,
-        "mae_full": 15.7503,
-        "mae_no_inbound": 15.9474,
-        "d_auc": 0.01833,
-        "d_mae": -0.1971
+        "inbound_known_rate": 0.2713,
+        "auc_full": 0.71178,
+        "auc_no_inbound": 0.69428,
+        "mae_full": 11.6523,
+        "mae_no_inbound": 11.7434,
+        "d_auc": 0.0175,
+        "d_mae": -0.0911
       },
       {
         "test_mask_seed": 1,
-        "inbound_known_rate": 0.2445,
-        "auc_full": 0.69117,
-        "auc_no_inbound": 0.67237,
-        "mae_full": 15.7437,
-        "mae_no_inbound": 15.9474,
-        "d_auc": 0.0188,
-        "d_mae": -0.2037
+        "inbound_known_rate": 0.272,
+        "auc_full": 0.70922,
+        "auc_no_inbound": 0.69428,
+        "mae_full": 11.6615,
+        "mae_no_inbound": 11.7434,
+        "d_auc": 0.01494,
+        "d_mae": -0.0819
       },
       {
         "test_mask_seed": 2,
-        "inbound_known_rate": 0.2473,
-        "auc_full": 0.69313,
-        "auc_no_inbound": 0.67237,
-        "mae_full": 15.7214,
-        "mae_no_inbound": 15.9474,
-        "d_auc": 0.02076,
-        "d_mae": -0.226
+        "inbound_known_rate": 0.2694,
+        "auc_full": 0.7088,
+        "auc_no_inbound": 0.69428,
+        "mae_full": 11.6697,
+        "mae_no_inbound": 11.7434,
+        "d_auc": 0.01452,
+        "d_mae": -0.0737
       },
       {
         "test_mask_seed": 3,
-        "inbound_known_rate": 0.2406,
-        "auc_full": 0.69036,
-        "auc_no_inbound": 0.67237,
-        "mae_full": 15.7553,
-        "mae_no_inbound": 15.9474,
-        "d_auc": 0.01799,
-        "d_mae": -0.1921
+        "inbound_known_rate": 0.2654,
+        "auc_full": 0.70641,
+        "auc_no_inbound": 0.69428,
+        "mae_full": 11.6708,
+        "mae_no_inbound": 11.7434,
+        "d_auc": 0.01213,
+        "d_mae": -0.0726
       },
       {
         "test_mask_seed": 4,
-        "inbound_known_rate": 0.2415,
-        "auc_full": 0.69023,
-        "auc_no_inbound": 0.67237,
-        "mae_full": 15.7549,
-        "mae_no_inbound": 15.9474,
-        "d_auc": 0.01786,
-        "d_mae": -0.1925
+        "inbound_known_rate": 0.2712,
+        "auc_full": 0.70837,
+        "auc_no_inbound": 0.69428,
+        "mae_full": 11.6679,
+        "mae_no_inbound": 11.7434,
+        "d_auc": 0.01409,
+        "d_mae": -0.0755
       }
     ],
     "mean": {
-      "auc_full": 0.69112,
-      "auc_no_inbound": 0.67237,
-      "d_auc": 0.01875,
-      "mae_full": 15.74512,
-      "mae_no_inbound": 15.9474,
-      "d_mae": -0.20228
+      "auc_full": 0.70892,
+      "auc_no_inbound": 0.69428,
+      "d_auc": 0.01464,
+      "mae_full": 11.66444,
+      "mae_no_inbound": 11.7434,
+      "d_mae": -0.07896
     },
     "ci_test_seed_0": {
       "n_boot": 2000,
       "d_auc": [
-        0.01284,
-        0.02361
+        0.01188,
+        0.02315
       ],
       "d_mae": [
-        -0.24562,
-        -0.14632
+        -0.11567,
+        -0.06654
       ]
     },
     "sensitivity": {
       "inbound_dropout": 0.35,
-      "inbound_known_rate_test": 0.216,
-      "auc_full": 0.69081,
-      "mae_full": 15.7548,
-      "auc_no_inbound": 0.67237,
-      "mae_no_inbound": 15.9474,
-      "d_auc": 0.01844,
-      "d_mae": -0.1926
+      "inbound_known_rate_test": 0.2315,
+      "auc_full": 0.7042,
+      "mae_full": 11.739,
+      "auc_no_inbound": 0.69428,
+      "mae_no_inbound": 11.7434,
+      "d_auc": 0.00992,
+      "d_mae": -0.0044
     }
+  },
+  "calibration": {
+    "file": "calibrator_delayed15.json",
+    "method": "platt",
+    "fit": {
+      "n": 5705,
+      "n_folds": 4,
+      "candidates": {
+        "identity": {
+          "oof_logloss": 0.44849
+        },
+        "platt": {
+          "oof_logloss": 0.44822
+        },
+        "isotonic": {
+          "oof_logloss": 0.45247
+        }
+      },
+      "chosen": "platt"
+    },
+    "fold": {
+      "date_min": "2026-09-22",
+      "date_max": "2026-10-04",
+      "n_rows": 5705,
+      "n_dates": 13,
+      "delayed15_rate": 0.1926,
+      "inbound_known_rate": 0.2659
+    },
+    "test_before": {
+      "auc": 0.7088,
+      "logloss": 0.3948,
+      "brier": 0.1212,
+      "mae": 11.67
+    },
+    "test_after": {
+      "auc": 0.7088,
+      "logloss": 0.3932,
+      "brier": 0.1205,
+      "mae": 11.67
+    },
+    "reliability_test_before": [
+      {
+        "bin": "0.0-0.1",
+        "n": 3582,
+        "pred_mean": 0.062,
+        "obs_rate": 0.059
+      },
+      {
+        "bin": "0.1-0.2",
+        "n": 3545,
+        "pred_mean": 0.146,
+        "obs_rate": 0.133
+      },
+      {
+        "bin": "0.2-0.3",
+        "n": 2113,
+        "pred_mean": 0.244,
+        "obs_rate": 0.215
+      },
+      {
+        "bin": "0.3-0.4",
+        "n": 979,
+        "pred_mean": 0.34,
+        "obs_rate": 0.284
+      },
+      {
+        "bin": "0.4-0.5",
+        "n": 358,
+        "pred_mean": 0.44,
+        "obs_rate": 0.425
+      },
+      {
+        "bin": "0.5-0.6",
+        "n": 140,
+        "pred_mean": 0.545,
+        "obs_rate": 0.414
+      },
+      {
+        "bin": "0.6-0.7",
+        "n": 40,
+        "pred_mean": 0.634,
+        "obs_rate": 0.5
+      },
+      {
+        "bin": "0.7-0.8",
+        "n": 20,
+        "pred_mean": 0.745,
+        "obs_rate": 0.5
+      },
+      {
+        "bin": "0.8-0.9",
+        "n": 5,
+        "pred_mean": 0.842,
+        "obs_rate": 0.8
+      },
+      {
+        "bin": "0.9-1.0",
+        "n": 3,
+        "pred_mean": 0.919,
+        "obs_rate": 0.667
+      }
+    ],
+    "reliability_test_after": [
+      {
+        "bin": "0.0-0.1",
+        "n": 3630,
+        "pred_mean": 0.065,
+        "obs_rate": 0.059
+      },
+      {
+        "bin": "0.1-0.2",
+        "n": 4020,
+        "pred_mean": 0.146,
+        "obs_rate": 0.141
+      },
+      {
+        "bin": "0.2-0.3",
+        "n": 2116,
+        "pred_mean": 0.243,
+        "obs_rate": 0.239
+      },
+      {
+        "bin": "0.3-0.4",
+        "n": 708,
+        "pred_mean": 0.339,
+        "obs_rate": 0.335
+      },
+      {
+        "bin": "0.4-0.5",
+        "n": 211,
+        "pred_mean": 0.441,
+        "obs_rate": 0.441
+      },
+      {
+        "bin": "0.5-0.6",
+        "n": 70,
+        "pred_mean": 0.535,
+        "obs_rate": 0.429
+      },
+      {
+        "bin": "0.6-0.7",
+        "n": 18,
+        "pred_mean": 0.649,
+        "obs_rate": 0.5
+      },
+      {
+        "bin": "0.7-0.8",
+        "n": 7,
+        "pred_mean": 0.731,
+        "obs_rate": 0.571
+      },
+      {
+        "bin": "0.8-0.9",
+        "n": 5,
+        "pred_mean": 0.846,
+        "obs_rate": 0.8
+      }
+    ]
   }
 }

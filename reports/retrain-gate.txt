@@ -1,0 +1,10 @@
+retrain gate on test window 2026-10-05..2026-10-29 (n=10785): candidate 42715b6@2026-10-29T14:57:07+00:00 vs current 4a4212f@2026-08-25T09:35:34+00:00 (current calibrator: none)
+  AUC     0.7088 vs 0.6929
+  MAE     11.670 vs 12.100
+  logloss 0.3932 vs 0.4023
+  pass R1: ΔAUC +0.0159, 95 % CI lower bound +0.0096 (need > -0.01)
+  pass R2: ΔMAE -0.430 min, 95 % CI upper bound -0.370 (need < 0.3)
+  pass R3: Δlog loss -0.0091, 95 % CI upper bound -0.0064 (need < 0.01)
+  pass R5: no-inbound rows (n=7880): mean P 0.174 vs observed 0.176, bias -0.003 (need |bias| < 0.03); shipped model 0.196
+  pass R4: 10785 test rows, links 'sched', dropout 0.25, same features
+SHIP

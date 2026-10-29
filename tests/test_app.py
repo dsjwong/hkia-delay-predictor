@@ -173,7 +173,7 @@ def test_model_page_renders():
     labels = {m.label for m in at.metric}
     assert {"AUC", "Brier", "MAE (min)"} <= labels                       # held-out test tiles
     met = next(d.value for d in at.dataframe if "predictor" in d.value.columns)
-    assert "XGBoost" in set(met["predictor"]) and "AUC ↑" in met.columns
+    assert any(x.startswith("XGBoost") for x in met["predictor"]) and "AUC ↑" in met.columns
     assert any("matured" in i.value for i in at.info) or len(at.dataframe) >= 3
 
 

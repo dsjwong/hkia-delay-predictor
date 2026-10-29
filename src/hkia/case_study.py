@@ -328,7 +328,7 @@ def retrospective(conn, window: tuple[pd.Timestamp, pd.Timestamp], models_dir: P
         return None
 
     X, _ = to_matrix(w, clf["cats"], clf["features"])
-    w["p"] = clf["model"].predict_proba(X)[:, 1]
+    w["p"] = models["calibrator"].predict(clf["model"].predict_proba(X)[:, 1])
     Xr, _ = to_matrix(w, reg["cats"], reg["features"])
     w["pred_min"] = reg["model"].predict(Xr)
     w["y"] = (w["delay_min"] > 15).astype(int)

@@ -2,7 +2,10 @@
 
 Usage: python -m hkia.train [--features data/features.parquet]
 
-Split: sorted unique dates -> first 70 % train, next 15 % validation (early stopping), last 15 % test.
+Split: sorted unique dates -> first 70 % train, next 15 % validation, last 15 % test. The validation block is cut again by
+date: its first half drives early stopping, its second half (`cal`) is the calibration fold -- the classifier's raw
+probabilities on it are used to fit the calibrator (`hkia.calibrate`, saved as models/calibrator_delayed15.json) that
+`hkia.predict` applies when serving. The test split is touched by neither, and is reported before and after calibration.
 Baseline A: train global delay rate / mean delay.  Baseline B: airline x scheduled-hour mean from train only
 (fallback airline mean, then global).  Model: XGBoost hist with native categoricals.
 
@@ -29,6 +32,7 @@ from sklearn.inspection import permutation_importance
 from sklearn.metrics import brier_score_loss, log_loss, mean_absolute_error, roc_auc_score
 
 from .baseline import baseline_b_predict, baseline_b_table
+from .calibrate import CALIBRATOR_FILE, fit_calibrator, reliability_table
 from .db import ROOT
 from .evaluate import _auc_np       # acyclic: hkia.evaluate imports only hkia.db + hkia.features
 from .features import CATEGORICAL, FEATURES, INBOUND, NUMERIC
@@ -40,7 +44,7 @@ WEATHER = ["temp_c", "dewp_c", "wdir", "wspd_kt", "wgst_kt", "visib_sm", "ceilin
 ROLLING = [f for f in NUMERIC if f.endswith("_mean_delay") or f.endswith("_n") and "day" in f]
 INBOUND_VALUE = [f for f in INBOUND if f != "inbound_known"]   # NaN'd together; inbound_known stays a real 0/1
 PAIRED = ("full", "no_inbound")     # the two variants that also get a regressor + per-row test predictions
-SPLIT_SEED = {"train": 0, "val": 1, "test": 2}   # distinct mask draws per split, derived from --mask-seed
+SPLIT_SEED = {"train": 0, "val": 1, "test": 2, "cal": 3}   # distinct mask draws per split, derived from --mask-seed
 N_BOOT = 2000
 N_TEST_SEEDS = 5
 SENSITIVITY_STEP = 0.10
@@ -58,6 +62,20 @@ def time_split(df: pd.DataFrame, train_frac=0.70, val_frac=0.15) -> dict[str, pd
     i_tr, i_va = int(round(n * train_frac)), int(round(n * (train_frac + val_frac)))
     parts = {"train": dates[:i_tr], "val": dates[i_tr:i_va], "test": dates[i_va:]}
     return {k: df[df["date"].isin(v)].copy() for k, v in parts.items()}
+
+
+def modelling_frame(feat: pd.DataFrame) -> pd.DataFrame:
+    """The rows models are fitted and scored on: departed (not cancelled) flights with a delay label."""
+    return feat[(feat["cancelled"] == 0) & feat["delay_min"].notna()].reset_index(drop=True)
+
+
+def carve_calibration(parts: dict[str, pd.DataFrame], cal_frac: float = 0.5) -> dict[str, pd.DataFrame]:
+    """Cut the validation block by date: first `1 - cal_frac` of its dates stay `val` (early stopping), the rest become
+    `cal` (calibrator fit). Date-ordered, so train < val < cal < test in time with no shuffling."""
+    dates = np.array(sorted(parts["val"]["date"].unique()))
+    k = int(round(len(dates) * (1 - cal_frac)))
+    val, cal = parts["val"], parts["val"]
+    return {**parts, "val": val[val["date"].isin(dates[:k])].copy(), "cal": cal[cal["date"].isin(dates[k:])].copy()}
 
 
 def mask_inbound(df: pd.DataFrame, rate: float, seed: int = 0) -> pd.DataFrame:
@@ -269,8 +287,8 @@ def main(argv=None):
     models_dir.mkdir(exist_ok=True), reports_dir.mkdir(exist_ok=True)
 
     feat = pd.read_parquet(a.features)
-    df = feat[(feat["cancelled"] == 0) & feat["delay_min"].notna()].reset_index(drop=True)
-    raw_splits = time_split(df)
+    df = modelling_frame(feat)
+    raw_splits = carve_calibration(time_split(df))
     # masking is training-time only and happens immediately after the split, so every downstream fit, early stop,
     # metric and ablation sees one consistent, deployment-shaped inbound coverage
     splits = {k: mask_inbound(v, a.inbound_dropout, a.mask_seed + SPLIT_SEED[k]) for k, v in raw_splits.items()}
@@ -283,6 +301,7 @@ def main(argv=None):
     Xtr, cats = to_matrix(splits["train"])
     Xva, _ = to_matrix(splits["val"], cats)
     Xte, _ = to_matrix(splits["test"], cats)
+    Xcal, _ = to_matrix(splits["cal"], cats)
     y = {k: splits[k]["delayed15"].astype(int).to_numpy() for k in splits}
     r = {k: splits[k]["delay_min"].to_numpy() for k in splits}
 
@@ -306,6 +325,11 @@ def main(argv=None):
         results[("XGB", k)] = {**clf_metrics(y[k], p[k]), "mae": round(mean_absolute_error(r[k], yhat[k]), 3)}
     log.info("results: %s", results)
     calib = calibration_table(y["test"], p["test"])
+    calibrator, cal_fit = fit_calibrator(clf.predict_proba(Xcal)[:, 1], y["cal"], blocks=splits["cal"]["date"].to_numpy())
+    p_cal = calibrator.predict(p["test"])
+    results[("XGB_calibrated", "test")] = {**clf_metrics(y["test"], p_cal), "mae": results[("XGB", "test")]["mae"]}
+    calib_cal = calibration_table(y["test"], p_cal)
+    log.info("calibration: %s -> test before %s, after %s", cal_fit, results[("XGB", "test")], results[("XGB_calibrated", "test")])
     gain_c, gain_r = gain_importance(clf), gain_importance(reg)
     perm_c = perm_importance(clf, Xte, y["test"], "roc_auc")
     perm_r = perm_importance(reg, Xte, r["test"], "neg_mean_absolute_error")
@@ -319,6 +343,7 @@ def main(argv=None):
 
     # persist
     joblib.dump({"model": clf, "cats": cats, "features": FEATURES}, models_dir / "xgb_delayed15.joblib")
+    calibrator.save(models_dir / CALIBRATOR_FILE)
     joblib.dump({"model": reg, "cats": cats, "features": FEATURES}, models_dir / "xgb_delay_min.joblib")
     joblib.dump({"clf": tabB_c, "reg": tabB_r}, models_dir / "baseline_b_airline_hour.joblib")
     fmeta_path = Path(a.features).with_suffix(".meta.json")
@@ -337,10 +362,15 @@ def main(argv=None):
                 # via to_json: the mae column is NaN for the variants that get no regressor, and a literal NaN in
                 # MANIFEST.json would not survive a JSON.parse in the web app
                 "ablation_test": json.loads(abl.to_json(orient="index")), "features_parquet_rows": int(len(feat)),
-                "inbound": inbound_info, "inbound_gate": gate}
+                "inbound": inbound_info, "inbound_gate": gate,
+                "calibration": {"file": CALIBRATOR_FILE, "method": calibrator.method, "fit": cal_fit,
+                                "fold": split_info["cal"], "test_before": results[("XGB", "test")],
+                                "test_after": results[("XGB_calibrated", "test")],
+                                "reliability_test_before": reliability_table(y["test"], p["test"]),
+                                "reliability_test_after": reliability_table(y["test"], p_cal)}}
     (models_dir / "MANIFEST.json").write_text(json.dumps(manifest, indent=2, default=str))
     write_feature_importance(clf, reg, models_dir / "feature_importance.json")
-    write_report(reports_dir / "M2-results.md", feat, df, split_info, results, calib, gain_c, gain_r, perm_c, perm_r, abl, manifest)
+    write_report(reports_dir / "M2-results.md", feat, df, split_info, results, calib, calib_cal, gain_c, gain_r, perm_c, perm_r, abl, manifest)
     return 0
 
 
@@ -371,7 +401,17 @@ def _ablation_note(manifest: dict) -> str:
         f"Gated in `scripts/inbound_gate.py`.")
 
 
-def write_report(path, feat, df, split_info, results, calib, gain_c, gain_r, perm_c, perm_r, abl, manifest):
+def _calibration_note(manifest: dict) -> str:
+    c = manifest["calibration"]
+    cand = ", ".join(f"{k} {v['oof_logloss']}" for k, v in c["fit"]["candidates"].items())
+    return (f"Calibrator fitted on the date-ordered calibration fold ({c['fold']['date_min']}..{c['fold']['date_max']}, "
+            f"{c['fold']['n_rows']} rows; train < early-stop fold < calibration fold < test). Method chosen by blocked "
+            f"{c['fit']['n_folds']}-fold out-of-fold log loss on that fold ({cand}) -> **{c['method']}**. Served probabilities "
+            f"(`hkia.predict`) are calibrated; SHAP attributions stay on the raw booster. Test before -> after: "
+            f"{c['test_before']} -> {c['test_after']}.")
+
+
+def write_report(path, feat, df, split_info, results, calib, calib_cal, gain_c, gain_r, perm_c, perm_r, abl, manifest):
     res = pd.DataFrame(results).T
     res.index = [f"{m} ({s})" for m, s in res.index]
     imp = pd.DataFrame({"clf gain": gain_c, "reg gain": gain_r, "clf perm dAUC": perm_c, "reg perm dMAE": perm_r})
@@ -384,7 +424,10 @@ def write_report(path, feat, df, split_info, results, calib, gain_c, gain_r, per
         "Baseline A = train global rate / mean. Baseline B = airline x scheduled-hour mean from the train split only "
         "(fallback: airline mean, then global). `median_train` = predict the train median delay (MAE reference).", "",
         _md(res), "",
-        "## Calibration on test (10 equal-width probability bins)", "", _md(calib), "",
+        f"## Calibration on test (10 equal-width probability bins) — served, after the `{manifest['calibration']['method']}` calibrator",
+        "", _md(calib_cal), "",
+        "## Reliability of the raw model on test (before calibration)", "", _md(calib), "",
+        _calibration_note(manifest), "",
         "## Feature importance (top 15 by gain) and permutation check on test (3 repeats)", "", _md(imp.fillna("")), "",
         "## Ablation — test AUC when a feature group is removed", "", _md(abl), "",
         _ablation_note(manifest), "",

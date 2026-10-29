@@ -7,7 +7,8 @@ Usage:
   python -m hkia.predict --models models.cand --summary-json /tmp/cand.json   # score a candidate build, write its
                                               # per-horizon summary (the ship gate's drift check reads two of these)
 
-Pipeline: models/ (xgb_delayed15 + xgb_delay_min + MANIFEST.json, written by hkia.train) -> the SAME feature builder as
+Pipeline: models/ (xgb_delayed15 + calibrator_delayed15.json + xgb_delay_min + MANIFEST.json, written by hkia.train; the
+calibrator maps the classifier's raw probability to the served p_delay15, and is the identity if the file is absent) -> the SAME feature builder as
 training (`hkia.features.build_features` over the whole flights table, so congestion + point-in-time rolling delay
 features see all history) -> rows written to table `predictions`. Retention per flight (see `write_predictions`):
 the FIRST score, the LATEST score, and at most one score per clock hour (UTC) in between -- a new score replaces the
@@ -41,6 +42,7 @@ import numpy as np
 import pandas as pd
 
 from . import explain
+from .calibrate import Calibrator, load_calibrator
 from .db import ROOT, connect
 from .features import build_features, load_flights, load_links, load_metar, load_tc_signals, weather_asof
 from .train import to_matrix
@@ -77,7 +79,7 @@ def load_models(models_dir: Path = MODELS_DIR) -> dict:
     clf = joblib.load(models_dir / "xgb_delayed15.joblib")
     reg = joblib.load(models_dir / "xgb_delay_min.joblib")
     manifest = json.loads((models_dir / "MANIFEST.json").read_text())
-    return {"clf": clf, "reg": reg, "manifest": manifest,
+    return {"clf": clf, "reg": reg, "manifest": manifest, "calibrator": load_calibrator(models_dir),
             "version": f"{manifest.get('git_sha', 'unknown')}@{manifest.get('created_at', '')}"}
 
 
@@ -125,7 +127,9 @@ def score(conn, models: dict, dates: list[str], include_departed: bool = False,
     if tgt.empty:
         return tgt.assign(p_delay15=np.nan, pred_delay_min=np.nan, features_hash="")
     X, _ = to_matrix(tgt, clf["cats"], clf["features"])
-    tgt["p_delay15"] = clf["model"].predict_proba(X)[:, 1].round(4)
+    p_raw = clf["model"].predict_proba(X)[:, 1]
+    # the served probability is the calibrated one (hkia.calibrate); SHAP below stays on the raw booster
+    tgt["p_delay15"] = models.get("calibrator", Calibrator()).predict(p_raw).round(4)
     # same forward pass, one extra booster call: local SHAP contributions for the "why this prediction" block.
     # Explanations are a nice-to-have on top of the score, so they must not be able to fail the scoring run: an
     # xgboost API change (requirements-ml pins only >=2.1) or a feature reorder would otherwise stop predictions

@@ -132,7 +132,7 @@ export default function Model() {
       />
     )
   const sp = man.split
-  const x = man.metrics['XGB/test'] ?? {}
+  const x = man.metrics['XGB_calibrated/test'] ?? man.metrics['XGB/test'] ?? {}
   const b = man.metrics['B_airline_hour/test'] ?? {}
   const med = man.metrics['median_train/test'] ?? {}
   const fi = md.feature_importance
@@ -214,7 +214,12 @@ export default function Model() {
                   { label: 'A: global rate / mean', m: man.metrics['A_global/test'] },
                   { label: 'B: airline × hour mean (train only)', m: man.metrics['B_airline_hour/test'] },
                   { label: 'train median delay', m: man.metrics['median_train/test'] },
-                  { label: 'XGBoost', m: man.metrics['XGB/test'] },
+                  ...(man.metrics['XGB_calibrated/test']
+                    ? [
+                        { label: 'XGBoost, raw', m: man.metrics['XGB/test'] },
+                        { label: 'XGBoost, calibrated (served)', m: man.metrics['XGB_calibrated/test'] },
+                      ]
+                    : [{ label: 'XGBoost', m: man.metrics['XGB/test'] }]),
                 ]}
               />
             </div>
