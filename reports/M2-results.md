@@ -1,15 +1,15 @@
 # M2 results — baselines vs XGBoost, time-based split
 
-Generated 2026-10-29T14:57:07+00:00 from `data/features.parquet` (71810 rows incl. cancelled; 71145 departed rows with labels used for modelling; git `42715b6`).
+Generated 2026-11-01T10:28:21+00:00 from `data/features.parquet` (73004 rows incl. cancelled; 72331 departed rows with labels used for modelling; git `f6ae66c`).
 
 ## Split (by date, no shuffling)
 
 |       | date_min   | date_max   |   n_rows |   n_dates |   delayed15_rate |   inbound_known_rate |
 |:------|:-----------|:-----------|---------:|----------:|-----------------:|---------------------:|
-| train | 2026-05-16 | 2026-09-09 |    49770 |       117 |           0.2804 |               0.2484 |
-| val   | 2026-09-10 | 2026-09-21 |     4885 |        12 |           0.139  |               0.2938 |
-| test  | 2026-10-05 | 2026-10-29 |    10785 |        25 |           0.1543 |               0.2694 |
-| cal   | 2026-09-22 | 2026-10-04 |     5705 |        13 |           0.1926 |               0.2659 |
+| train | 2026-05-16 | 2026-09-11 |    50583 |       119 |           0.2784 |               0.2491 |
+| val   | 2026-09-12 | 2026-09-23 |     4907 |        12 |           0.1392 |               0.2931 |
+| test  | 2026-10-07 | 2026-11-01 |    11071 |        26 |           0.1527 |               0.2703 |
+| cal   | 2026-09-24 | 2026-10-06 |     5770 |        13 |           0.1901 |               0.264  |
 
 ## Metrics (classification: P(delay > 15 min); regression: delay minutes)
 
@@ -17,90 +17,90 @@ Baseline A = train global rate / mean. Baseline B = airline x scheduled-hour mea
 
 |                       |      auc |   logloss |    brier |    mae |
 |:----------------------|---------:|----------:|---------:|-------:|
-| A_global (val)        |   0.5    |    0.4601 |   0.1397 | 16.882 |
-| B_airline_hour (val)  |   0.658  |    0.4469 |   0.1368 | 16.489 |
-| A_global (test)       |   0.5    |    0.4745 |   0.1464 | 17.714 |
-| B_airline_hour (test) |   0.6592 |    0.458  |   0.1416 | 17.192 |
-| median_train (test)   | nan      |  nan      | nan      | 12.731 |
-| XGB (val)             |   0.7045 |    0.3752 |   0.1134 | 10.539 |
-| XGB (test)            |   0.7088 |    0.3948 |   0.1212 | 11.67  |
-| XGB_calibrated (test) |   0.7088 |    0.3932 |   0.1205 | 11.67  |
+| A_global (val)        |   0.5    |    0.4589 |   0.1392 | 16.895 |
+| B_airline_hour (val)  |   0.6586 |    0.4455 |   0.1363 | 16.512 |
+| A_global (test)       |   0.5    |    0.4717 |   0.1452 | 17.284 |
+| B_airline_hour (test) |   0.6615 |    0.4543 |   0.14   | 16.757 |
+| median_train (test)   | nan      |  nan      | nan      | 12.421 |
+| XGB (val)             |   0.7062 |    0.3748 |   0.1133 | 10.64  |
+| XGB (test)            |   0.7134 |    0.3912 |   0.1197 | 11.33  |
+| XGB_calibrated (test) |   0.7134 |    0.3891 |   0.1188 | 11.33  |
 
 ## Calibration on test (10 equal-width probability bins) — served, after the `platt` calibrator
 
 |         |    n |   pred_mean |   obs_rate |
 |:--------|-----:|------------:|-----------:|
-| 0.0-0.1 | 3630 |       0.065 |      0.059 |
-| 0.1-0.2 | 4020 |       0.146 |      0.141 |
-| 0.2-0.3 | 2116 |       0.243 |      0.239 |
-| 0.3-0.4 |  708 |       0.339 |      0.335 |
-| 0.4-0.5 |  211 |       0.441 |      0.441 |
-| 0.5-0.6 |   70 |       0.535 |      0.429 |
-| 0.6-0.7 |   18 |       0.649 |      0.5   |
-| 0.7-0.8 |    7 |       0.731 |      0.571 |
-| 0.8-0.9 |    5 |       0.846 |      0.8   |
+| 0.0-0.1 | 3599 |       0.066 |      0.059 |
+| 0.1-0.2 | 4155 |       0.145 |      0.132 |
+| 0.2-0.3 | 2259 |       0.243 |      0.233 |
+| 0.3-0.4 |  718 |       0.339 |      0.331 |
+| 0.4-0.5 |  232 |       0.442 |      0.47  |
+| 0.5-0.6 |   78 |       0.542 |      0.462 |
+| 0.6-0.7 |   15 |       0.647 |      0.533 |
+| 0.7-0.8 |   11 |       0.727 |      0.727 |
+| 0.8-0.9 |    4 |       0.864 |      0.75  |
 
 ## Reliability of the raw model on test (before calibration)
 
 |         |    n |   pred_mean |   obs_rate |
 |:--------|-----:|------------:|-----------:|
-| 0.0-0.1 | 3582 |       0.062 |      0.059 |
-| 0.1-0.2 | 3545 |       0.146 |      0.133 |
-| 0.2-0.3 | 2113 |       0.244 |      0.215 |
-| 0.3-0.4 |  979 |       0.34  |      0.284 |
-| 0.4-0.5 |  358 |       0.44  |      0.425 |
-| 0.5-0.6 |  140 |       0.545 |      0.414 |
-| 0.6-0.7 |   40 |       0.634 |      0.5   |
-| 0.7-0.8 |   20 |       0.745 |      0.5   |
-| 0.8-0.9 |    5 |       0.842 |      0.8   |
-| 0.9-1.0 |    3 |       0.919 |      0.667 |
+| 0.0-0.1 | 3461 |       0.064 |      0.058 |
+| 0.1-0.2 | 3724 |       0.146 |      0.123 |
+| 0.2-0.3 | 2251 |       0.245 |      0.203 |
+| 0.3-0.4 | 1047 |       0.342 |      0.306 |
+| 0.4-0.5 |  358 |       0.441 |      0.399 |
+| 0.5-0.6 |  150 |       0.545 |      0.447 |
+| 0.6-0.7 |   54 |       0.637 |      0.5   |
+| 0.7-0.8 |   18 |       0.756 |      0.611 |
+| 0.8-0.9 |    5 |       0.833 |      0.8   |
+| 0.9-1.0 |    3 |       0.925 |      0.667 |
 
-Calibrator fitted on the date-ordered calibration fold (2026-09-22..2026-10-04, 5705 rows; train < early-stop fold < calibration fold < test). Method chosen by blocked 4-fold out-of-fold log loss on that fold (identity 0.44849, platt 0.44822, isotonic 0.45247) -> **platt**. Served probabilities (`hkia.predict`) are calibrated; SHAP attributions stay on the raw booster. Test before -> after: {'auc': 0.7088, 'logloss': 0.3948, 'brier': 0.1212, 'mae': 11.67} -> {'auc': 0.7088, 'logloss': 0.3932, 'brier': 0.1205, 'mae': 11.67}.
+Calibrator fitted on the date-ordered calibration fold (2026-09-24..2026-10-06, 5770 rows; train < early-stop fold < calibration fold < test). Method chosen by blocked 4-fold out-of-fold log loss on that fold (identity 0.44517, platt 0.44479, isotonic 0.44833) -> **platt**. Served probabilities (`hkia.predict`) are calibrated; SHAP attributions stay on the raw booster. Test before -> after: {'auc': 0.7134, 'logloss': 0.3912, 'brier': 0.1197, 'mae': 11.33} -> {'auc': 0.7134, 'logloss': 0.3891, 'brier': 0.1188, 'mae': 11.33}.
 
 ## Feature importance (top 15 by gain) and permutation check on test (3 repeats)
 
 |                            |   clf gain |   reg gain |   clf perm dAUC |   reg perm dMAE |
 |:---------------------------|-----------:|-----------:|----------------:|----------------:|
-| airline                    |       15.2 |     2667.6 |          0.0504 |          0.7421 |
-| airline_prevday_mean_delay |       15.4 |     2574.9 |          0.0143 |          0.0642 |
-| airline_sameday_mean_delay |            |            |          0.0029 |                 |
-| airline_sameday_n          |            |            |                 |          0.029  |
-| airport_sameday_mean_delay |       16.4 |     2791   |          0.0028 |          0.043  |
-| airport_sameday_n          |            |            |          0.0031 |          0.1463 |
-| ceiling_ft                 |            |     3013.7 |                 |                 |
-| cong_pm30                  |            |            |          0.003  |          0.0373 |
-| cong_pm60                  |            |            |          0.0019 |                 |
-| cong_same_hour             |            |            |          0.0024 |          0.0307 |
-| dest                       |            |            |          0.0394 |          0.3821 |
-| dest_region                |            |            |          0.0022 |          0.029  |
-| inbound_actual_slack_min   |            |            |          0.0018 |          0.0358 |
-| inbound_confidence         |       15.8 |     2110.6 |                 |                 |
-| inbound_known              |       51.2 |            |                 |                 |
-| inbound_lateness_min       |       23.6 |     2272.3 |          0.0183 |          0.0868 |
-| inbound_sched_slack_min    |       14.5 |     2001.6 |                 |                 |
-| msn_signal                 |       19.7 |     2160.6 |                 |                 |
-| sched_dow                  |            |            |          0.0028 |          0.0276 |
-| sched_hour                 |       15.9 |     1964.8 |                 |          0.0574 |
-| sched_minute_of_day        |       15.8 |     2111.6 |          0.0277 |          0.196  |
-| tc_signal                  |       25.8 |     4797.1 |                 |                 |
-| temp_c                     |       15.2 |     2552.1 |                 |          0.0517 |
-| visib_sm                   |       18.1 |     2259.7 |                 |                 |
-| wdir                       |            |            |          0.0039 |                 |
-| wx_rain                    |      183.1 |    20617.1 |                 |                 |
-| wx_ts                      |       46.3 |     5023.5 |                 |                 |
+| airline                    |       16.3 |     2651   |          0.0472 |          0.7159 |
+| airline_prevday_mean_delay |       17.7 |     2957.6 |          0.0145 |          0.0734 |
+| airline_prevday_n          |            |            |          0.0025 |                 |
+| airline_sameday_mean_delay |            |            |          0.0034 |                 |
+| airline_sameday_n          |            |            |                 |          0.0225 |
+| airport_sameday_mean_delay |       16.7 |     2862.1 |          0.0016 |          0.0392 |
+| airport_sameday_n          |            |            |          0.0045 |          0.1494 |
+| ceiling_ft                 |            |     3455   |                 |                 |
+| cong_pm30                  |            |            |          0.0035 |          0.038  |
+| cong_pm60                  |            |            |                 |          0.0284 |
+| cong_same_hour             |            |            |          0.004  |          0.0292 |
+| dest                       |       12.6 |            |          0.0363 |          0.4115 |
+| dest_region                |            |            |          0.0045 |          0.0394 |
+| inbound_known              |       30   |            |                 |                 |
+| inbound_lateness_min       |       24   |     1987.4 |          0.0135 |          0.0527 |
+| inbound_sched_slack_min    |       18.9 |     2464.2 |          0.0024 |          0.0266 |
+| msn_signal                 |       21.5 |     2291.5 |                 |                 |
+| sched_dow                  |            |     1692.8 |                 |                 |
+| sched_hour                 |       17.7 |     2228   |                 |          0.0249 |
+| sched_minute_of_day        |       15.7 |     1950.9 |          0.0172 |          0.1552 |
+| tc_signal                  |       26.1 |     4911.9 |                 |                 |
+| temp_c                     |       16.7 |     2647   |                 |          0.0362 |
+| terminal                   |            |            |          0.0013 |                 |
+| visib_sm                   |       19.3 |     2146.3 |                 |                 |
+| wdir                       |            |            |          0.0021 |                 |
+| wx_rain                    |      178.4 |    16237.5 |                 |                 |
+| wx_ts                      |       50.6 |     5337   |                 |                 |
 
 ## Ablation — test AUC when a feature group is removed
 
 | variant                  |   n_features |    auc |   logloss |   brier |     mae |
 |:-------------------------|-------------:|-------:|----------:|--------:|--------:|
-| full                     |           38 | 0.7088 |    0.3948 |  0.1212 |  11.67  |
-| no_weather               |           24 | 0.6979 |    0.411  |  0.1276 | nan     |
-| no_rolling               |           32 | 0.699  |    0.3987 |  0.1222 | nan     |
-| no_inbound               |           33 | 0.6943 |    0.3997 |  0.1225 |  11.743 |
-| no_weather_no_rolling    |           18 | 0.6962 |    0.4492 |  0.1412 | nan     |
-| calendar+congestion only |            9 | 0.59   |    0.4825 |  0.1534 | nan     |
+| full                     |           38 | 0.7134 |    0.3912 |  0.1197 |  11.33  |
+| no_weather               |           24 | 0.7029 |    0.406  |  0.1256 | nan     |
+| no_rolling               |           32 | 0.6998 |    0.3959 |  0.1209 | nan     |
+| no_inbound               |           33 | 0.7005 |    0.3951 |  0.1205 |  11.366 |
+| no_weather_no_rolling    |           18 | 0.6969 |    0.4475 |  0.1402 | nan     |
+| calendar+congestion only |            9 | 0.5833 |    0.4818 |  0.153  | nan     |
 
-`mae` is fitted only for `full` and `no_inbound` (the two variants the inbound decision compares). **Leak rule for the inbound block:** link *existence* is rebuilt from scheduled departure times (`rotations --events sched`, so the pairing cannot depend on the label), and the link's *values* are gated at scheduled − 2 h — an inbound that went on blocks after that cutoff counts as unknown, exactly as it would at scoring time. **The ship decision is made at masked coverage:** every row here was trained and tested with `--inbound-dropout 0.25` applied to all three splits (inbound_known rate 0.2694 on test vs 0.3595 in the parquet), i.e. at the coverage deployment actually has, not the coverage the backfill has. The rows above are scored at the train-time test mask (seed 0 + 2); because one mask draw is itself a source of variance, the decision is taken on the mean over 5 independent test masks of the same two fitted models: ΔAUC 0.01464, ΔMAE -0.07896 min (full − no_inbound); 95 % CI on ΔAUC at test seed 0 [0.01188, 0.02315]. Gated in `scripts/inbound_gate.py`.
+`mae` is fitted only for `full` and `no_inbound` (the two variants the inbound decision compares). **Leak rule for the inbound block:** link *existence* is rebuilt from scheduled departure times (`rotations --events sched`, so the pairing cannot depend on the label), and the link's *values* are gated at scheduled − 2 h — an inbound that went on blocks after that cutoff counts as unknown, exactly as it would at scoring time. **The ship decision is made at masked coverage:** every row here was trained and tested with `--inbound-dropout 0.25` applied to all three splits (inbound_known rate 0.2703 on test vs 0.3619 in the parquet), i.e. at the coverage deployment actually has, not the coverage the backfill has. The rows above are scored at the train-time test mask (seed 0 + 2); because one mask draw is itself a source of variance, the decision is taken on the mean over 5 independent test masks of the same two fitted models: ΔAUC 0.01525, ΔMAE -0.04188 min (full − no_inbound); 95 % CI on ΔAUC at test seed 0 [0.01036, 0.02067]. Gated in `scripts/inbound_gate.py`.
 
 <!-- interpretation: hand-written, preserved by train.py -->
 ## Interpretation (hand-written, 2026-08-17; update 2026-10-29)
