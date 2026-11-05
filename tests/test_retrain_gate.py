@@ -107,3 +107,46 @@ def test_render_names_the_failing_gates():
     rep = {**res, **G.decide(res, _manifest(), _manifest()), "test_window": ["a", "b"], "candidate_model": "c",
            "current_model": "d", "current_calibrator": "none"}
     assert G.render(rep).splitlines()[-1] == "HOLD: R2"
+
+
+def _asof_res(y, r, cand, cur, **kw):
+    a = G.paired_deltas(y, r, cand, cur, n_boot=300)
+    a["dates"] = ["2026-11-01", "2026-11-07"]
+    return {"asof": a, **kw}
+
+
+def _r6(out):
+    return next(c for c in out["checks"] if c["gate"] == "R6")
+
+
+def test_r6_passes_identical_and_non_separable_candidates():
+    y, r, p = _world()
+    near = np.clip(p + np.random.default_rng(5).normal(0, 0.01, len(p)), 0.01, 0.99)
+    for cand in (p, near):
+        out = _decide((p, r), (p, r), y, r, **_asof_res(y, r, (cand, r), (p, r)))
+        assert _r6(out)["ok"] and out["ship"]
+
+
+def test_r6_blocks_a_candidate_separably_worse_on_log_loss_or_auc():
+    y, r, p = _world()
+    z = np.log(p / (1 - p))
+    sharp = 1 / (1 + np.exp(-3 * z))
+    out = _decide((p, r), (p, r), y, r, **_asof_res(y, r, (sharp, r), (p, r)))
+    assert not _r6(out)["ok"] and not out["ship"]
+    junk = np.random.default_rng(3).random(len(p))
+    out = _decide((p, r), (p, r), y, r, **_asof_res(y, r, (junk, r), (p, r)))
+    assert not _r6(out)["ok"] and not out["ship"]
+
+
+def test_r6_does_not_block_a_better_candidate_and_is_absent_when_not_requested():
+    y, r, p = _world()
+    junk = np.random.default_rng(3).random(len(p))
+    out = _decide((p, r), (p, r), y, r, **_asof_res(y, r, (p, r), (junk, r)))
+    assert _r6(out)["ok"]
+    assert all(c["gate"] != "R6" for c in _decide((p, r), (p, r), y, r)["checks"])
+
+
+def test_r6_not_evaluable_is_no_verdict():
+    y, r, p = _world()
+    out = _decide((p, r), (p, r), y, r, asof={"skipped": "only 10 flights"})
+    assert _r6(out)["ok"] and "not evaluated" in _r6(out)["detail"] and out["ship"]

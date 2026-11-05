@@ -17,6 +17,11 @@ over flights (both models on the same resample), on the difference candidate - c
         GATE-C was written for, checked against the label instead of against the shipped model, because a retrained
         model may legitimately move the level. NOT a day-ahead check: those test rows still carry same-day rolling
         stats and as-of weather, which true day-ahead rows (scored the evening before) do not
+    R6  day-ahead as-of backtest on the most recent ASOF_DAYS complete days of departed flights (`hkia.asof`: each day
+        scored at noon HKT the day before, later actuals blanked, same flights for both models): the candidate must not
+        be SEPARABLY worse than the shipped model -- ΔAUC 95 % CI entirely below 0, or Δlog loss 95 % CI entirely
+        above 0, blocks the ship. Added after the 2026-11-01 refit, whose live AUC looked worse than its predecessor's
+        only because the two had been scored on different days. Not evaluable (too few rows, no db) = no verdict
     R4  the test window has >= MIN_TEST rows and the candidate MANIFEST records a leak-free build with the same inbound
         dropout the shipped model was trained under (links rebuilt from scheduled times; no silent change of the recipe)
 
@@ -38,6 +43,8 @@ MAX_D_MAE = 0.30
 MAX_D_LOGLOSS = 0.01
 MAX_UNKNOWN_BIAS = 0.03
 MIN_TEST = 2000
+ASOF_DAYS = 7
+MIN_ASOF = 1000
 N_BOOT = 2000
 
 
@@ -109,6 +116,17 @@ def decide(res: dict, cand_manifest: dict, cur_manifest: dict, min_test: int = M
         bias = iu["candidate_mean_p"] - iu["observed_rate"]
         add("R5", abs(bias) < MAX_UNKNOWN_BIAS, f"no-inbound rows (n={iu['n']}): mean P {iu['candidate_mean_p']:.3f} vs observed "
             f"{iu['observed_rate']:.3f}, bias {bias:+.3f} (need |bias| < {MAX_UNKNOWN_BIAS}); shipped model {iu['current_mean_p']:.3f}")
+    asof = res.get("asof")
+    if asof is not None:
+        if asof.get("skipped"):
+            add("R6", True, f"day-ahead as-of backtest not evaluated: {asof['skipped']}")
+        else:
+            a_hi, l_lo = asof["d_auc"]["ci"][1], asof["d_logloss"]["ci"][0]
+            add("R6", not (a_hi < 0 or l_lo > 0),
+                f"day-ahead as-of, {asof['dates'][0]}..{asof['dates'][-1]} (n={asof['n']}): ΔAUC {asof['d_auc']['point']:+.4f} "
+                f"[{asof['d_auc']['ci'][0]:+.4f}, {a_hi:+.4f}], Δlog loss {asof['d_logloss']['point']:+.4f} "
+                f"[{l_lo:+.4f}, {asof['d_logloss']['ci'][1]:+.4f}], ΔMAE {asof['d_mae']['point']:+.3f} min "
+                f"(blocks only if the AUC CI is entirely < 0 or the log loss CI entirely > 0)")
     add("R4", not problems, "; ".join(problems) or f"{res['n']} test rows, links 'sched', dropout {inb.get('inbound_dropout')}, same features")
     return {"ship": all(c["ok"] for c in checks), "checks": checks}
 
@@ -126,7 +144,39 @@ def score_model(models_dir: Path, test) -> tuple[np.ndarray, np.ndarray]:
     return load_calibrator(models_dir).predict(clf["model"].predict_proba(X)[:, 1]), reg["model"].predict(Xr)
 
 
-def run(features: Path, current: Path, candidate: Path, n_boot: int = N_BOOT) -> dict:
+def asof_deltas(current: Path, candidate: Path, cur_m: dict, cand_m: dict, days: int = ASOF_DAYS, n_boot: int = N_BOOT,
+                min_rows: int = MIN_ASOF) -> dict:
+    """Candidate - current on the last `days` complete days, day-ahead as-of scoring of both on the same flights.
+    Days up to the end of either model's calibration fold are excluded (not held out)."""
+    import joblib
+
+    from hkia import asof
+    from hkia.db import connect
+    try:
+        conn = connect()
+        inp = asof.load_inputs(conn)
+    except Exception as e:  # noqa: BLE001 -- no db / no table: report, never crash the gate
+        return {"skipped": f"database unavailable ({type(e).__name__})"}
+    after = max(m.get("split", {}).get("cal", {}).get("date_max", "") for m in (cur_m, cand_m)) or None
+    dates = asof.recent_complete_dates(inp.flights, days, after=after)
+    if not dates:
+        return {"skipped": f"no complete held-out day after {after}"}
+    top = set()
+    for d in (current, candidate):
+        top |= set(joblib.load(d / "xgb_delayed15.joblib")["cats"]["dest"].categories)
+    long = asof.score_day_ahead(inp, dates, {"cand": candidate, "cur": current}, top - {"OTHER"})
+    long = long[long["predictor"].isin(["cand", "cur"])]
+    p = long.pivot_table(index=asof.KEY, columns="predictor", values="p")
+    m = long.pivot_table(index=asof.KEY, columns="predictor", values="minutes")
+    lab = long.drop_duplicates(asof.KEY).set_index(asof.KEY)[["delayed15", "delay_min"]].reindex(p.index)
+    if len(p) < min_rows:
+        return {"skipped": f"only {len(p)} flights on {dates[0]}..{dates[-1]} (< {min_rows})"}
+    res = paired_deltas(lab["delayed15"].to_numpy(), lab["delay_min"].to_numpy(),
+                        (p["cand"].to_numpy(), m["cand"].to_numpy()), (p["cur"].to_numpy(), m["cur"].to_numpy()), n_boot)
+    return {**res, "dates": dates}
+
+
+def run(features: Path, current: Path, candidate: Path, n_boot: int = N_BOOT, asof_days: int = 0) -> dict:
     import pandas as pd
 
     from hkia import train as T
@@ -143,6 +193,8 @@ def run(features: Path, current: Path, candidate: Path, n_boot: int = N_BOOT) ->
     if unk.any():
         res["inbound_unknown"] = {"n": int(unk.sum()), "observed_rate": float(y[unk].mean()),
                                   "candidate_mean_p": float(cand[0][unk].mean()), "current_mean_p": float(cur[0][unk].mean())}
+    if asof_days:
+        res["asof"] = asof_deltas(current, candidate, cur_m, cand_m, asof_days, n_boot)
     res["test_window"] = [str(test["date"].min()), str(test["date"].max())]
     res["current_model"] = f"{cur_m.get('git_sha')}@{cur_m.get('created_at')}"
     res["candidate_model"] = f"{cand_m.get('git_sha')}@{cand_m.get('created_at')}"
@@ -157,6 +209,11 @@ def render(rep: dict) -> str:
              f"  AUC     {c['auc']:.4f} vs {u['auc']:.4f}", f"  MAE     {c['mae']:.3f} vs {u['mae']:.3f}",
              f"  logloss {c['logloss']:.4f} vs {u['logloss']:.4f}"]
     lines += [f"  {'pass' if k['ok'] else 'FAIL'} {k['gate']}: {k['detail']}" for k in rep["checks"]]
+    if rep.get("asof") and not rep["asof"].get("skipped"):
+        a = rep["asof"]
+        lines.insert(4, f"  day-ahead as-of {a['dates'][0]}..{a['dates'][-1]} (n={a['n']}): AUC {a['candidate']['auc']:.4f} vs "
+                        f"{a['current']['auc']:.4f}, logloss {a['candidate']['logloss']:.4f} vs {a['current']['logloss']:.4f}, "
+                        f"MAE {a['candidate']['mae']:.3f} vs {a['current']['mae']:.3f}")
     lines.append("SHIP" if rep["ship"] else "HOLD: " + ", ".join(k["gate"] for k in rep["checks"] if not k["ok"]))
     return "\n".join(lines)
 
@@ -168,8 +225,10 @@ def main(argv=None) -> int:
     ap.add_argument("--candidate", default="models.cand")
     ap.add_argument("--out", help="write the full report JSON here")
     ap.add_argument("--n-boot", type=int, default=N_BOOT)
+    ap.add_argument("--asof-days", type=int, default=0,
+                    help="also run R6, the day-ahead as-of backtest over the last N complete days (needs the db; 0 = off)")
     a = ap.parse_args(argv)
-    rep = run(Path(a.features), Path(a.current), Path(a.candidate), a.n_boot)
+    rep = run(Path(a.features), Path(a.current), Path(a.candidate), a.n_boot, a.asof_days)
     if a.out:
         Path(a.out).write_text(json.dumps(rep, indent=2))
     print(render(rep))

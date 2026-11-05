@@ -1,6 +1,6 @@
 name: retrain
 # Weekly refit of the delay models on the latest data, shipped only if a NON-INFERIORITY gate vs the currently shipped
-# models passes on the candidate's held-out test window (scripts/retrain_gate.py). Reads the db (dbsync pull) and NEVER
+# models passes on the candidate's held-out test window and a day-ahead as-of backtest of the last 7 days (scripts/retrain_gate.py). Reads the db (dbsync pull) and NEVER
 # pushes it: the leak-free link rebuild below rewrites aircraft_links in this runner's copy only.
 on:
   schedule:
@@ -48,7 +48,7 @@ jobs:
         run: |
           set -o pipefail
           PYTHONPATH=src python scripts/retrain_gate.py --features "$RUNNER_TEMP/features.parquet" \
-            --current models --candidate models.cand --out reports.cand/retrain-gate.json | tee gate.txt
+            --current models --candidate models.cand --asof-days 7 --out reports.cand/retrain-gate.json | tee gate.txt
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
