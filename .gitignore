@@ -11,3 +11,4 @@ data/*.db.part
 .DS_Store
 *.egg-info/
 data/features.parquet
+requirements-frozen.txt
