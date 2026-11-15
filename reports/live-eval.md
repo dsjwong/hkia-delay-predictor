@@ -1,27 +1,27 @@
 # Live evaluation — predictions vs actuals
 
-Generated 2026-11-14T22:20:16+00:00. Window: flights departed in the last 7 days; per flight, the last prediction written before its actual departure. Matured predictions: **2827**.
+Generated 2026-11-15T22:47:26+00:00. Window: flights departed in the last 7 days; per flight, the last prediction written before its actual departure. Matured predictions: **2836**.
 
-Dates 2026-11-08..2026-11-15; observed P(delay > 15) = 0.1394; median lead time between last score and departure = 203.4 min.
+Dates 2026-11-09..2026-11-16; observed P(delay > 15) = 0.146; median lead time between last score and departure = 203.4 min.
 
 | predictor | AUC | Brier | log loss | MAE (min) |
 |---|---|---|---|---|
-| model | 0.6608 | 0.119 | 0.3935 | 11.361 |
-| baseline_airline_hour | 0.6232 | 0.1382 | 0.4483 | 15.97 |
-| naive_rate | 0.5 | 0.1199 | 0.4038 | 10.691 |
+| model | 0.653 | 0.1238 | 0.4065 | 11.524 |
+| baseline_airline_hour | 0.6145 | 0.1409 | 0.4549 | 15.911 |
+| naive_rate | 0.5 | 0.1247 | 0.4157 | 10.794 |
 
-Coverage: **2827 of 2863** departures in the window (98.7%) carry a prediction written before they left; the rest were never scored in time and are excluded. They are not a random sample — a flight the cron misses is usually one that departed shortly after being scheduled — so the observed late rate above is the rate among *scored* flights, a little higher than the airport's.
+Coverage: **2836 of 2876** departures in the window (98.6%) carry a prediction written before they left; the rest were never scored in time and are excluded. They are not a random sample — a flight the cron misses is usually one that departed shortly after being scheduled — so the observed late rate above is the rate among *scored* flights, a little higher than the airport's.
 
 ## Model minus airline × hour baseline
 
-Paired bootstrap, 2,000 resamples over the 2827 matured flights.
+Paired bootstrap, 2,000 resamples over the 2836 matured flights.
 
 | metric | delta | 95 % CI | separable from noise? |
 |---|---:|---|---|
-| auc | +0.0376 | [+0.0084, +0.0689] | **yes** |
-| brier | -0.0192 | [-0.0229, -0.0154] | **yes** |
-| logloss | -0.0548 | [-0.0650, -0.0436] | **yes** |
-| mae | -4.61 | [-4.8990, -4.2873] | **yes** |
+| auc | +0.0385 | [+0.0081, +0.0687] | **yes** |
+| brier | -0.0171 | [-0.0206, -0.0134] | **yes** |
+| logloss | -0.0484 | [-0.0584, -0.0383] | **yes** |
+| mae | -4.39 | [-4.6843, -4.1010] | **yes** |
 
 The model is separably better on: auc, brier, logloss, mae. A metric whose CI straddles 0 is a margin this window cannot distinguish from luck — it is reported, not claimed.
 
@@ -29,14 +29,14 @@ The model is separably better on: auc, brier, logloss, mae. A metric whose CI st
 
 | date | n | delayed > 15 | model AUC | baseline AUC | model Brier | model MAE | baseline MAE |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 2026-11-08 † | 377 | 0.1512 | 0.6592 | 0.5897 | 0.1255 | 12.8 | 17.5 |
-| 2026-11-09 | 404 | 0.1287 | 0.7165 | 0.6587 | 0.1052 | 9.9 | 15.6 |
+| 2026-11-09 † | 364 | 0.1346 | 0.7243 | 0.6575 | 0.1082 | 10.2 | 16.1 |
 | 2026-11-10 | 391 | 0.1714 | 0.7526 | 0.6521 | 0.1272 | 11.7 | 16.1 |
 | 2026-11-11 | 396 | 0.1010 | 0.6205 | 0.6142 | 0.0955 | 10.2 | 16.1 |
 | 2026-11-12 | 396 | 0.1212 | 0.6581 | 0.6283 | 0.1036 | 8.7 | 14.7 |
 | 2026-11-13 | 416 | 0.1298 | 0.6018 | 0.6843 | 0.1168 | 10.2 | 14.7 |
 | 2026-11-14 | 416 | 0.1659 | 0.6539 | 0.5838 | 0.1521 | 15.9 | 17.4 |
-| 2026-11-15 *† | 31 | 0.2258 | 0.4167 | 0.1964 | 0.1981 | 12.2 | 14.4 |
+| 2026-11-15 | 418 | 0.1890 | 0.6041 | 0.5398 | 0.1556 | 13.5 | 16.9 |
+| 2026-11-16 *† | 39 | 0.2051 | 0.5242 | 0.5202 | 0.1607 | 10.1 | 10.4 |
 
 `*` = thin day (< 100 flights — AUC standard error is large, treat as noise). `†` = partial day (the rolling window starts and ends part-way through a day).
 
@@ -44,11 +44,11 @@ The model is separably better on: auc, brier, logloss, mae. A metric whose CI st
 
 | horizon | n | delayed > 15 | model AUC | baseline AUC | model MAE |
 |---|---:|---:|---:|---:|---:|
-| after STD * | 72 | 0.6528 | 0.6604 | 0.5494 | 43.4 |
-| < 30 min | 186 | 0.1505 | 0.7584 | 0.6137 | 12.0 |
-| 30–120 min | 677 | 0.1477 | 0.6733 | 0.6426 | 9.7 |
-| 2–12 h | 1773 | 0.1168 | 0.6317 | 0.5975 | 10.8 |
-| > 12 h | 119 | 0.1008 | 0.7780 | 0.5962 | 9.3 |
+| after STD * | 63 | 0.6032 | 0.6316 | 0.5363 | 42.0 |
+| < 30 min | 195 | 0.1538 | 0.7085 | 0.6068 | 12.0 |
+| 30–120 min | 678 | 0.1475 | 0.6697 | 0.6610 | 10.2 |
+| 2–12 h | 1776 | 0.1306 | 0.6342 | 0.5933 | 11.0 |
+| > 12 h | 124 | 0.1129 | 0.7406 | 0.5516 | 9.5 |
 
 `*` = thin bucket (< 100 flights — AUC standard error is large, treat as noise). The horizon is measured against the *timetable*, not the actual departure: `actual_ts - scored_at` would be a function of the delay itself (a flight is only ever scored 6 h before it leaves because it left 6 h late), so bucketing on it would stratify by the outcome. `after STD` = the last score was written after the scheduled time, i.e. the flight was already visibly running late.
 
@@ -56,14 +56,14 @@ The model is separably better on: auc, brier, logloss, mae. A metric whose CI st
 
 | bin | n | pred_mean | obs_rate |
 |---|---:|---:|---:|
-| 0.0-0.1 | 686 | 0.070 | 0.052 |
-| 0.1-0.2 | 1041 | 0.149 | 0.134 |
-| 0.2-0.3 | 673 | 0.244 | 0.147 |
-| 0.3-0.4 | 278 | 0.339 | 0.284 |
-| 0.4-0.5 | 102 | 0.440 | 0.216 |
-| 0.5-0.6 | 34 | 0.543 | 0.382 |
-| 0.6-0.7 * | 9 | 0.624 | 0.333 |
-| 0.7-0.8 * | 3 | 0.756 | 0.667 |
+| 0.0-0.1 | 655 | 0.070 | 0.063 |
+| 0.1-0.2 | 1017 | 0.149 | 0.135 |
+| 0.2-0.3 | 669 | 0.243 | 0.145 |
+| 0.3-0.4 | 322 | 0.344 | 0.270 |
+| 0.4-0.5 | 117 | 0.441 | 0.214 |
+| 0.5-0.6 | 36 | 0.544 | 0.472 |
+| 0.6-0.7 * | 15 | 0.626 | 0.467 |
+| 0.7-0.8 * | 4 | 0.751 | 0.500 |
 | 0.9-1.0 * | 1 | 0.912 | 1.000 |
 
 `*` = fewer than 30 flights in the bin: the observed rate moves by 1/n per flight, so these points wander a long way on their own.
@@ -75,10 +75,10 @@ The model is separably better on: auc, brier, logloss, mae. A metric whose CI st
 | RA 410 | 2026-11-14 | RNA | KTM | 0.91 | 55.8 | 83 min |
 | LX 139 | 2026-11-14 | SWR | ZRH | 0.79 | 32.6 | 30 min |
 | VJ 985 | 2026-11-14 | VJC | PQC | 0.74 | 34.4 | 219 min |
-| LX 139 | 2026-11-08 | SWR | ZRH | 0.64 | 27.5 | 43 min |
-| OD 606 | 2026-11-14 | MXD | KUL | 0.61 | 44.9 | 22 min |
+| QF 128 | 2026-11-15 | QFA | SYD | 0.67 | 23.7 | 66 min |
+| VJ 877 | 2026-11-15 | VJC | SGN | 0.64 | 38.4 | 83 min |
 
-That table is picked *after* the fact — it can only ever contain wins. The honest counterpart: of **all 4 calls published at P ≥ 70%**, 3 were actually more than 15 minutes late (75%).
+That table is picked *after* the fact — it can only ever contain wins. The honest counterpart: of **all 5 calls published at P ≥ 70%**, 3 were actually more than 15 minutes late (60%).
 
 ## Biggest misses
 
@@ -87,15 +87,15 @@ That table is picked *after* the fact — it can only ever contain wins. The hon
 | UO 622 | 2026-11-12 | HKE | HND | 0.03 | -4.9 | 33 min |
 | CA 420 | 2026-11-10 | CCA | CKG | 0.05 | 1.7 | 33 min |
 | UO 132 | 2026-11-10 | HKE | KHH | 0.05 | -1.1 | 36 min |
+| LX 139 | 2026-11-15 | SWR | ZRH | 0.74 | 31.0 | 8 min |
 | QF 128 | 2026-11-14 | QFA | SYD | 0.73 | 30.4 | 15 min |
-| JX 236 | 2026-11-14 | SJX | TPE | 0.67 | 24.8 | 9 min |
 
 ## By model version
 
 | model_version | n | AUC | Brier | log loss | MAE (min) | first scored | last scored |
 |---|---:|---:|---:|---:|---:|---|---|
-| f6ae66c@2026-11-01T10:28:21+00:00 | 2827 | 0.6608 | 0.1190 | 0.3935 | 11.4 | 2026-11-07T07:25:23+00:00 | 2026-11-14T12:21:40+00:00 |
+| f6ae66c@2026-11-01T10:28:21+00:00 | 2836 | 0.6530 | 0.1238 | 0.4065 | 11.5 | 2026-11-08T19:49:35+00:00 | 2026-11-15T16:41:51+00:00 |
 
 Live confirmation that a newer model version is actually better takes weeks to accrue at this cron cadence — a version with few matured predictions here is not yet evidence either way.
 
-Model versions in window: {'f6ae66c@2026-11-01T10:28:21+00:00': 2827}
+Model versions in window: {'f6ae66c@2026-11-01T10:28:21+00:00': 2836}
