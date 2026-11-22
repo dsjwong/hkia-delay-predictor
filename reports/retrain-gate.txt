@@ -1,10 +1,12 @@
-retrain gate on test window 2026-10-07..2026-11-01 (n=11071): candidate f6ae66c@2026-11-01T10:28:21+00:00 vs current 42715b6@2026-10-29T14:57:07+00:00 (current calibrator: calibrator_delayed15.json)
-  AUC     0.7134 vs 0.7090
-  MAE     11.330 vs 11.414
-  logloss 0.3891 vs 0.3907
-  pass R1: ΔAUC +0.0044, 95 % CI lower bound +0.0012 (need > -0.01)
-  pass R2: ΔMAE -0.084 min, 95 % CI upper bound -0.064 (need < 0.3)
-  pass R3: Δlog loss -0.0017, 95 % CI upper bound -0.0005 (need < 0.01)
-  pass R5: no-inbound rows (n=8079): mean P 0.177 vs observed 0.174, bias +0.003 (need |bias| < 0.03); shipped model 0.176
-  pass R4: 11071 test rows, links 'sched', dropout 0.25, same features
+retrain gate on test window 2026-10-25..2026-11-22 (n=11878): candidate e2c2178@2026-11-22T11:25:36+00:00 vs current f6ae66c@2026-11-01T10:28:21+00:00 (current calibrator: calibrator_delayed15.json)
+  AUC     0.6857 vs 0.6718
+  MAE     10.960 vs 11.045
+  logloss 0.3908 vs 0.3959
+  day-ahead as-of 2026-11-15..2026-11-21 (n=2897): AUC 0.6199 vs 0.6154, logloss 0.4664 vs 0.4665, MAE 14.034 vs 12.972
+  pass R1: ΔAUC +0.0139, 95 % CI lower bound +0.0092 (need > -0.01)
+  pass R2: ΔMAE -0.084 min, 95 % CI upper bound -0.056 (need < 0.3)
+  pass R3: Δlog loss -0.0051, 95 % CI upper bound -0.0035 (need < 0.01)
+  pass R5: no-inbound rows (n=8567): mean P 0.170 vs observed 0.169, bias +0.001 (need |bias| < 0.03); shipped model 0.183
+  pass R6: day-ahead as-of, 2026-11-15..2026-11-21 (n=2897): ΔAUC +0.0044 [-0.0044, +0.0138], Δlog loss -0.0001 [-0.0034, +0.0032], ΔMAE +1.061 min (blocks only if the AUC CI is entirely < 0 or the log loss CI entirely > 0)
+  pass R4: 11878 test rows, links 'sched', dropout 0.25, same features
 SHIP
